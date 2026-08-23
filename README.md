@@ -142,6 +142,21 @@ See `.env.example`. Every variable is listed there with a comment; only `SESSION
 3. update `SETTLEMENT_VAULT_ADDRESS`, restart, then move the remaining funds from the old address
 4. destroy the old key file once the balance is zero
 
+## Running a test end to end
+
+1. Open the gateway URL and create an account (any email — this is a preprod system with test funds).
+2. **Fund credits.** Pick a route:
+   - *Ethereum Sepolia USDC* — get test USDC from Circle's faucet, send it to the deposit address shown,
+     paste the transaction hash. The gateway reads the transfer log and credits what actually arrived.
+   - *Cardano preprod* — send tADA to the deposit address shown and paste the transaction hash.
+   - *Exchange* — submit the exchange, amount and withdrawal id, then approve it in `/admin`.
+3. Watch the deposit move from `pending` to `confirming` to `credited`. Re-check runs the validation again.
+4. **Withdraw.** Enter any valid `addr_test1…` address, choose the settlement asset, check the fee and the
+   amount you will receive, and confirm.
+5. The withdrawal shows `submitted` with a real transaction hash, then `confirmed` once it is on chain.
+6. Click the hash to open it in the Cardano preprod explorer.
+7. `/evidence` lists the same records, including the failures and the duplicate-prevention counters.
+
 ## TRL evidence
 
 `/evidence` is generated from this deployment's own records: credited deposits with their source-chain
