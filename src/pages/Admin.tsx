@@ -264,10 +264,18 @@ function Rebalancing({ rebalances, onDone, config }: { rebalances: Rebalance[]; 
       <h2>Recorded rebalances</h2>
       <div className="card scroll">
         <table>
-          <thead><tr><th>Source</th><th>Provider</th><th>Destination</th><th>Expected</th><th>Actual</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Raised by</th><th>Source</th><th>Provider</th><th>Destination</th><th>Expected</th><th>Actual</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {rebalances.map((r) => (
               <tr key={r.id}>
+                <td>
+                  <span className={`pill ${r.origin === "auto" ? "warn" : ""}`}>{r.origin === "auto" ? "threshold" : "admin"}</span>
+                  {r.trigger ? (
+                    <div className="sub">
+                      free {fmt(r.trigger.availableUnits)} below min {fmt(r.trigger.minUnits)}
+                    </div>
+                  ) : null}
+                </td>
                 <td>{r.sourceAmount} {r.sourceAsset} · {r.sourceNetwork}</td>
                 <td>{r.provider}</td>
                 <td>{r.destinationAssetId}</td>
@@ -290,7 +298,7 @@ function Rebalancing({ rebalances, onDone, config }: { rebalances: Rebalance[]; 
                 </td>
               </tr>
             ))}
-            {rebalances.length === 0 ? <tr><td colSpan={7} className="sub">Nothing recorded yet.</td></tr> : null}
+            {rebalances.length === 0 ? <tr><td colSpan={8} className="sub">Nothing recorded yet.</td></tr> : null}
           </tbody>
         </table>
       </div>

@@ -15,6 +15,20 @@ import type { SettlementAsset, SettlementTarget } from "../../src/shared/types.j
 const USDCX_PREPROD_POLICY = "31dde3db98ad05feb688d4dbb146b3b6054e1246cbcef98c79b0bf66";
 const USDCX_ASSET_NAME_HEX = "5553444378"; // "USDCx"
 
+/** tUSDM as held by this deployment's preprod settlement vault, verified on
+ *  chain. The asset name carries the CIP-67 label 333 (`0014df10`) that marks a
+ *  CIP-68 fungible token, followed by "tUSDM" — so the hex is the whole name,
+ *  not just the ASCII part.
+ *
+ *  Its on-chain CIP-68 metadata declares 6 decimals, ticker tUSDM and the URL
+ *  mehen.io. That metadata is written by whoever minted the policy and is
+ *  self-asserted: this subject is NOT present in the Cardano Foundation preprod
+ *  token metadata registry, and we have not identified issuer documentation
+ *  confirming this policy id. It is therefore a TEST asset that represents the
+ *  USDM settlement path — never production USDM. */
+const TUSDM_PREPROD_POLICY = "11c93226aabf1e9157620857d9ac013ba111680bd837f62a7ca90214";
+const TUSDM_ASSET_NAME_HEX = "0014df10745553444d"; // CIP-68 (333) + "tUSDM"
+
 const rateBps = (name: string, fallback: number): number => {
   const v = Number(process.env[name]);
   return Number.isFinite(v) && v > 0 ? Math.trunc(v) : fallback;
@@ -22,16 +36,16 @@ const rateBps = (name: string, fallback: number): number => {
 
 /** Per-asset reserve thresholds, falling back to the global defaults.
  *  e.g. RESERVE_TADA_MIN_UNITS, RESERVE_USDCX_PREPROD_TARGET_UNITS. */
-function reserveFor(assetId: string) {
+function reserveFor(assetId: string, defaults: Partial<SettlementAsset["reserve"]> = {}) {
   const key = assetId.toUpperCase().replace(/-/g, "_");
   const read = (suffix: string, fallback: number) => {
     const v = Number(process.env[`RESERVE_${key}_${suffix}`]);
     return Number.isFinite(v) && v >= 0 ? Math.trunc(v) : fallback;
   };
   return {
-    criticalUnits: read("CRITICAL_UNITS", config.reserve.criticalUnits),
-    minUnits: read("MIN_UNITS", config.reserve.minUnits),
-    targetUnits: read("TARGET_UNITS", config.reserve.targetUnits),
+    criticalUnits: read("CRITICAL_UNITS", defaults.criticalUnits ?? config.reserve.criticalUnits),
+    minUnits: read("MIN_UNITS", defaults.minUnits ?? config.reserve.minUnits),
+    targetUnits: read("TARGET_UNITS", defaults.targetUnits ?? config.reserve.targetUnits),
   };
 }
 
@@ -62,6 +76,29 @@ export const SETTLEMENT_ASSETS: SettlementAsset[] = [
     minSettlementUnits: 1_000_000,
     enabled: process.env.SETTLEMENT_USDCX_ENABLED === "true",
     reserve: reserveFor("usdcx-preprod"),
+  },
+  {
+    id: "tusdm-preprod",
+    label: "tUSDM (preprod test asset)",
+    unit: `${TUSDM_PREPROD_POLICY}${TUSDM_ASSET_NAME_HEX}`,
+    decimals: 6,
+    official: false,
+    officialityNote:
+      "A Cardano preprod native asset whose CIP-68 metadata declares 6 decimals, the ticker tUSDM and the " +
+      "URL mehen.io. That metadata is self-asserted by the minting policy: the subject is not present in the " +
+      "Cardano Foundation preprod token metadata registry, and we have not identified issuer documentation " +
+      "confirming this policy id. It is used here strictly as TEST LIQUIDITY representing the USDM settlement " +
+      "path, and is not production USDM. Production USDM/USDCx settlement depends on final liquidity, " +
+      "treasury and provider setup during the pilot phase.",
+    minSettlementUnits: 1_000_000, // 1 tUSDM
+    enabled: process.env.SETTLEMENT_TUSDM_ENABLED === "true",
+    // Sized against the test liquidity actually held on preprod, not against a
+    // production treasury policy.
+    reserve: reserveFor("tusdm-preprod", {
+      criticalUnits: 10_000_000,  // 10 tUSDM
+      minUnits: 50_000_000,       // 50 tUSDM
+      targetUnits: 200_000_000,   // 200 tUSDM
+    }),
   },
 ];
 
@@ -94,6 +131,12 @@ export const SETTLEMENT_RATE_BPS: Record<string, number> = {
   tada: rateBps("SETTLEMENT_RATE_TADA_BPS", 10_000),
   // A dollar-denominated asset settles 1:1 with credits, before fees.
   "usdcx-preprod": rateBps("SETTLEMENT_RATE_USDCX_BPS", 10_000),
+  // DEMONSTRATION RATE. 1 credit settles as 1 tUSDM so the amounts are readable
+  // in the explorer and the settlement path can be exercised. tUSDM is test
+  // liquidity with no market price, so this is a fixed test configuration and
+  // not a production pricing model: production rates depend on the liquidity,
+  // treasury and provider setup chosen during the pilot phase.
+  "tusdm-preprod": rateBps("SETTLEMENT_RATE_TUSDM_BPS", 10_000),
 };
 
 export function getSettlementAsset(id: string): SettlementAsset {

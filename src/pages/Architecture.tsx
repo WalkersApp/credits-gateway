@@ -274,7 +274,7 @@ export function Architecture({ config }: { config: GatewayConfig }) {
                 <td className="sub">{fmt(a.criticalUnits)}</td>
                 <td className="sub">{fmt(a.minUnits)}</td>
                 <td className="sub">{fmt(a.targetUnits)}</td>
-                <td>{fmt(a.balanceUnits - a.lockedUnits)}</td>
+                <td>{fmt(a.availableUnits)}</td>
                 <td><span className={`pill ${a.health === "healthy" ? "good" : a.health === "low" ? "warn" : "bad"}`}>{a.health}</span></td>
               </tr>
             ))}
@@ -299,6 +299,37 @@ export function Architecture({ config }: { config: GatewayConfig }) {
         </p>
       </div>
 
+      <h2>Credit liability and settlement capacity</h2>
+      <div className="card">
+        <p className="sub" style={{ marginTop: 0 }}>
+          Two numbers decide whether the gateway can honour what it owes, and they are deliberately read from
+          different places. <strong>Capacity</strong> comes from the chain — the vault balance minus what is
+          already committed to unsettled withdrawals. <strong>Liability</strong> comes from the credit ledger —
+          every credit issued and not yet settled. Because neither is derived from the other, no operator entry
+          and no rebalance record can make the gateway look solvent.
+        </p>
+        {reserve ? (
+          <dl className="kv">
+            <dt>Outstanding credits</dt>
+            <dd>{fmt(reserve.liability.outstandingCreditUnits)}</dd>
+            <dt>Settlement capacity</dt>
+            <dd>{fmt(reserve.liability.totalCapacityCreditUnits)} <span className="sub">credit-equivalent</span></dd>
+            <dt>Coverage</dt>
+            <dd>
+              {reserve.liability.coverageBps === null
+                ? <span className="sub">no outstanding credits</span>
+                : <span className={`pill ${reserve.liability.fullyCovered ? "good" : "bad"}`}>
+                    {(reserve.liability.coverageBps / 100).toFixed(1)}%
+                  </span>}
+            </dd>
+          </dl>
+        ) : <p className="sub">Reserve unavailable.</p>}
+        <p className="sub">
+          On this preprod deployment the reserve is funded from the testnet faucet, so these figures evidence
+          the mechanism rather than a treasury policy. Sizing thresholds against real liabilities is pilot work.
+        </p>
+      </div>
+
       <h2>Liquidity and rebalancing</h2>
       <div className="card">
         <p className="sub" style={{ marginTop: 0 }}>
@@ -307,11 +338,19 @@ export function Architecture({ config }: { config: GatewayConfig }) {
           gateway defines the interface, records what happened, and verifies the result against the chain.
         </p>
         <p className="sub">
-          <strong>Today:</strong> reserve tracking read from the chain, rebalance records, and manual treasury
-          operations. <strong>Pilot work:</strong> selecting and contracting the treasury route, completing any
-          issuer onboarding, and automating what can be automated — reserve-triggered rebalance records,
-          on-chain verification of the resulting mint transaction, swap quote and slippage pre-checks with
-          policy-bounded signing, and reverse-leg monitoring.
+          <strong>Today:</strong> reserve and liability tracking read from the chain and the ledger, rebalance
+          requests raised automatically when a free reserve falls below its minimum, rebalance records, and
+          manual treasury operations. <strong>Pilot work:</strong> selecting and contracting the treasury route,
+          completing any issuer onboarding, and automating what can be automated — on-chain verification of the
+          resulting mint transaction, swap quote and slippage pre-checks with policy-bounded signing, and
+          reverse-leg monitoring.
+        </p>
+        <p className="sub">
+          <strong>Where the automation stops.</strong> A background job raises a rebalance <em>request</em> — a
+          planned record with no provider and no source assigned, because the gateway knows the reserve is short
+          but not where liquidity should come from — and at most one stays open per asset. No job moves
+          liquidity, executes a conversion, contacts a provider or completes a rebalance. Marking a rebalance
+          complete grants no capacity: capacity is always re-read from the vault's on-chain balance.
         </p>
         <p className="sub">
           <strong>Candidate routes — none integrated.</strong> Normalisation through an exchange or an issuer

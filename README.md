@@ -75,6 +75,35 @@ knows nothing about what credits are spent on.
 of fee, and 49.5 tADA settled on chain. Both explorers resolve the hashes —
 [cardanoscan](https://preprod.cardanoscan.io/) and [cexplorer](https://preprod.cexplorer.io/).
 
+**Re-run automatically, unattended, by `npm run demo:settlement`:**
+
+| Step | Transaction |
+|---|---|
+| Deposit paid in by the demo wallet | `5f5f5084a119ba4f13a503493362401d14adc16733b2c5327e3e351e5faefdc5` |
+| Withdrawal settled by the gateway | `dcbd5183d598be7615ced8800c548a39356da1fce17be38e04560eb9267be009` |
+
+5 tADA in, 5 credits issued, 5 credits redeemed for 4.725 tADA after the 0.275 fee. The whole sequence —
+deposit, validation, issuance, withdrawal, vault signature, submission, confirmation — took 165 seconds
+unattended, and the settlement confirmed 21 seconds after the withdrawal was requested. The recorded run is in
+[`docs/preprod-settlement-run.json`](docs/preprod-settlement-run.json). See
+[Preprod automated settlement demonstration](#preprod-automated-settlement-demonstration).
+
+**Preprod automated settlement demonstration using test liquidity (tUSDM):**
+
+| Step | Transaction |
+|---|---|
+| Deposit paid in by the demo wallet | `2b1189ad9f8579b44769f5a0229d4a244f9ca133ae95c8b7dce97fae7351b2e5` |
+| Withdrawal settled in tUSDM by the gateway | `8c2a2a5d8c3974176d36fff29386200ac10e168d2a53d0199cacf63b47cda11e` |
+
+The same path, settling a **dollar-denominated native asset** instead of tADA: 5 credits redeemed for 4.725
+tUSDM after the fee, confirmed on chain 73 seconds after the request, whole run 145 seconds unattended. The
+destination output holds 4.725 tUSDM plus 1.05595 ADA of min-UTxO, and the vault went from 300 to 295.275
+tUSDM. Recorded run: [`docs/preprod-settlement-run-tusdm.json`](docs/preprod-settlement-run-tusdm.json).
+
+**tUSDM here is test liquidity, not production USDM.** It is a Cardano preprod test asset used to exercise the
+settlement path for a dollar-denominated native asset. Production USDM/USDCx settlement depends on final
+liquidity, treasury and provider setup during the pilot phase.
+
 **Not exercised here:** USDM or USDCx payouts, an automated conversion route, and an exchange API. See
 [Limitations](#limitations).
 
@@ -112,8 +141,12 @@ route, or an exchange API. Those are pilot work.
 - **Credit accounting** — append-only ledger, idempotency keys, and a conservation check that halts settlement
   on any drift.
 - **Cardano settlement flow** — build, sign, submit, confirm, reconcile, from the gateway's own vault key.
-- **Reserve protection** — per-asset thresholds, committed-versus-free liquidity, and settlements blocked
-  before any credits are locked.
+- **Reserve protection** — per-asset thresholds, committed-versus-free liquidity, credit liability tracked
+  against on-chain capacity, and settlements blocked before any credits are locked.
+- **Automated settlement demonstration** — `npm run demo:settlement` re-runs the whole path unattended and
+  verifies the resulting Cardano transaction independently of the gateway.
+- **Rebalancing framework** — a low reserve raises a rebalance request automatically; the movement of
+  liquidity itself remains a treasury action outside the system.
 - **Failure handling** — rejected deposits, duplicate submissions, refunds before broadcast, and unproven
   submits held for review instead of guessed at.
 - **Operational visibility** — `/architecture` and `/evidence` rendered from this deployment's own
@@ -123,11 +156,13 @@ route, or an exchange API. Those are pilot work.
 
 - **Production USDM settlement** — no USDM payout has been made by this deployment.
 - **Production USDCx settlement** — no USDCx payout has been made by this deployment.
-- **Automated liquidity conversion** — conversion and rebalancing are operator processes that this gateway
-  records, not performs.
+- **Automated liquidity conversion** — the gateway raises rebalance requests and records outcomes, but the
+  conversion itself is an operator process it does not perform.
+- **Provider integrations** — the Circle/USDC, USDM issuer and Cardano DEX routes are declared as typed
+  interfaces marked `future_integration`. None is connected, and zero conversions have been executed.
 - **Exchange integrations** — the exchange route is manual and admin-approved. No exchange API is integrated.
 
-Those four are pilot work. Nothing in this repository presents them as done.
+Those are pilot work. Nothing in this repository presents them as done.
 
 The full Catalyst answer, including the candidate production settlement route and the gap responses, is in
 [`docs/CATALYST.md`](docs/CATALYST.md).
@@ -263,13 +298,21 @@ settlement-asset registry knows the asset. **Enabled** means this deployment wil
 
 | Asset | Registered | Enabled here | Exercised here |
 |---|---|---|---|
-| Preprod ADA (tADA) | yes | yes | **yes** — the only asset this deployment has settled |
+| Preprod ADA (tADA) | yes | yes | **yes** — settled on chain by this deployment |
+| tUSDM preprod test asset, policy `11c93226…0214` | yes | behind `SETTLEMENT_TUSDM_ENABLED` | see below |
 | USDCx preprod registry asset, policy `31dde3db…bf66` | yes | no — disabled by default (`SETTLEMENT_USDCX_ENABLED`) | no |
 | USDM, Cardano mainnet | production target | no | no |
 | USDCx, Cardano mainnet | production target | no | no |
 
 - **tADA** is the preprod network's own asset, from the official testnet faucet. Not a stablecoin: it proves
   the settlement path, not the peg.
+- **tUSDM** is a Cardano preprod **test asset** held by the settlement vault as test liquidity. Its on-chain
+  CIP-68 metadata declares 6 decimals, the ticker tUSDM and the URL mehen.io — but that metadata is asserted by
+  whoever minted the policy, the subject is **not** in the Cardano Foundation preprod token metadata registry,
+  and we have not identified issuer documentation confirming this policy id. It is used strictly to exercise
+  the settlement path for a dollar-denominated native asset. **It is not production USDM**, and no issuer
+  relationship exists. Production USDM/USDCx settlement depends on final liquidity, treasury and provider setup
+  during the pilot phase.
 - The **preprod asset named USDCx** is registered in the Cardano Foundation preprod token metadata registry
   with 6 decimals. We have not identified issuer documentation confirming it as official Circle USDCx, so it
   is treated as a test asset and is disabled by default.
@@ -294,13 +337,37 @@ prove: that USDM or USDCx payouts have been validated. None have been made by th
 | USDCx on **Cardano mainnet** | a **registered production target** — not enabled, not exercised here |
 | USDCx reached via **Circle xReserve** | a **candidate production reserve-funding route** identified by research — not integrated, not exercised, no relationship with the provider |
 
+## Reserve, liability and coverage
+
+Two numbers decide whether the gateway can honour what it owes, and they are measured from different places
+on purpose:
+
+- **Capacity** is read from the chain — the vault's balance for a settlement asset, minus what is already
+  committed to withdrawals that have not yet landed. That difference is what a new withdrawal can draw on.
+- **Liability** is read from the credit ledger — every credit issued and not yet settled, whether it is
+  available in an account or locked behind a withdrawal in flight.
+
+`GET /api/reserve` reports both, plus the surplus and a coverage percentage, and raises warnings when a
+reserve drops below its minimum or critical threshold, when outstanding credits exceed capacity, or when
+capacity has fallen below the largest single withdrawal the gateway advertises. Capacity is expressed in
+credit-equivalent units at this deployment's settlement rate so the two figures are directly comparable.
+
+Because the two are measured independently, **no operator entry can make the gateway look solvent**. Marking
+a rebalance completed grants no capacity: capacity is re-read from the vault's on-chain balance, so a
+top-up that was booked but never arrived leaves the reserve exactly as short as it was. There is a test for
+precisely that.
+
+On this preprod deployment the reserve is funded from the testnet faucet, so coverage figures evidence the
+mechanism, not a treasury policy. Sizing thresholds against real liabilities is pilot work.
+
 ## Liquidity and rebalancing
 
 **The gateway does not execute conversions.** No bridge, no DEX integration, no market maker. Conversion of
 external stablecoin liquidity into Cardano settlement liquidity happens outside the system. The gateway
 defines the interface, records what happened, and verifies the result against the chain.
 
-**Today:** reserve tracking read from the chain, rebalance records, and manual treasury operations.
+**Today:** reserve tracking read from the chain, credit-liability and coverage tracking, threshold-triggered
+rebalance requests, rebalance records, and manual treasury operations.
 **Pilot work:** selecting and contracting the treasury route, completing any issuer onboarding, and automating
 what can be automated — reserve-triggered rebalance records, on-chain verification of the resulting mint
 transaction, swap quote and slippage pre-checks with policy-bounded signing, and reverse-leg monitoring. No
@@ -325,15 +392,34 @@ already running.
 |---|---|---|
 | Reserve monitoring | on-chain balance read per settlement asset, free = balance − committed | unchanged, plus alerting |
 | Thresholds | configured per asset in base units: critical / minimum / target | unchanged, sized against observed pool depth |
-| Rebalance trigger | an operator reads the reserve state and decides | reserve-triggered rebalance records raised automatically |
+| Rebalance trigger | a rebalance **request** is raised automatically when the free reserve falls below its minimum; a person still decides what to do about it | unchanged, plus alerting and provider routing |
 | Conversion itself | **a manual treasury action, entirely outside this system** | provider-integrated, with quote and slippage pre-checks and policy-bounded signing |
 | Recording | an admin books the rebalance and what actually arrived | written automatically from the provider response |
 | Verification | the vault's on-chain balance, read independently of the record | plus on-chain verification of the mint transaction, and reverse-leg monitoring |
 
-No automated job in this deployment creates, triggers or completes a rebalance. The background jobs chase
-deposits toward their confirmation target, settle withdrawals parked for liquidity, confirm broadcast
-settlements and snapshot the reserve — and nothing else. Percentages, provider names and pool sizes are deliberately not quoted here:
+**What the automation does and does not do.** A background job raises a rebalance *request* when the free
+reserve for an asset falls below its minimum: a `planned` record with no provider and no source assigned,
+because the gateway knows the reserve is short but not where liquidity should come from. While a request for
+an asset is still open no second one is raised, so a job running every few seconds cannot bury the operator in
+duplicates of one alert. **No automated job moves liquidity, executes a conversion, contacts a provider, or
+completes a rebalance** — a request is a signal for a human, and everything after it is a treasury action
+outside this system. The background jobs otherwise chase deposits toward their confirmation target, settle
+withdrawals parked for liquidity, confirm broadcast settlements and snapshot the reserve. Percentages, provider names and pool sizes are deliberately not quoted here:
 none has been selected, and any figure would date.
+
+### Liquidity provider routes — declared in code, not integrated
+
+`server/providers/registry.ts` declares the routes a pilot integration would use — a Circle/USDC route, a USDM
+issuer route, and a Cardano DEX route — each carrying `status: "future_integration"` and the list of things
+that would have to be true before it could be enabled. It also declares the `LiquidityProvider` interface such
+an integration would have to implement.
+
+**Nothing in that file is connected.** There is no implementation of the interface in this repository, no
+credential, and no API call. `PROVIDER_INTEGRATION_STATUS` records zero integrated providers and zero executed
+conversions, and the function that would run a route throws `provider_not_integrated` by design — so a future
+change that starts treating a declared route as an executable one fails loudly instead of quietly implying a
+conversion happened. The registry exists so the shape of a pilot integration is visible and typed, and so a
+reviewer can confirm it is empty rather than take our word for it.
 
 ### Production settlement route — candidate, not integrated
 
@@ -404,6 +490,41 @@ is not.
 
 The same example ran for real on this deployment with tADA in place of USDC: 120 in, 120 credits, 50 redeemed,
 49.5 settled. The hashes are in [Current validation status](#current-validation-status).
+
+## Preprod automated settlement demonstration
+
+`npm run demo:settlement` runs the whole path unattended and proves it with two on-chain transactions:
+
+```bash
+DEMO_PASSWORD=<pick-one> npm run demo:settlement -- --amount 5 --out run.json
+DEMO_PASSWORD=<pick-one> npm run demo:settlement -- --amount 5 --asset tusdm-preprod   # test liquidity
+```
+
+It drives this deployment's own HTTP API — the same endpoints the browser uses — and does the following:
+
+1. loads the demo wallet's preprod signing key from disk (never from the repository);
+2. sends real tADA to the gateway's deposit address and waits for the gateway to validate it on chain;
+3. registers or signs in, and confirms the credits were issued for the amount that actually arrived;
+4. requests a withdrawal back to the demo wallet, which locks the credits;
+5. waits while the settlement queue builds, signs and submits the payout from the vault;
+6. waits for confirmation, at which point the locked credits are consumed;
+7. **re-checks the settlement transaction against Koios directly**, so the gateway is not the only witness to
+   its own success;
+8. writes an evidence record with both transaction hashes, explorer links, timings, and the reserve before
+   and after.
+
+It asserts rather than announces: a deposit that is rejected, a settlement that fails or is refunded, or a
+transaction Koios cannot see all exit non-zero. It cannot report a success it did not achieve.
+
+`--asset tusdm-preprod` runs the same demonstration settling **test liquidity** in a dollar-denominated native
+asset instead of tADA, which additionally exercises native-asset coin selection and the min-UTxO ADA that
+leaves the vault alongside the token.
+
+**What it demonstrates:** the settlement execution path, on Cardano preprod, end to end.
+**What it does not demonstrate:** production liquidity, treasury operations, production USDM or USDCx
+settlement, or any external provider. The settlement assets are tADA and a preprod tUSDM **test** asset, which
+evidence the mechanism and not a peg or an issuer relationship. Production USDM/USDCx settlement depends on
+final liquidity, treasury and provider setup during the pilot phase.
 
 ## Fees
 
@@ -525,8 +646,14 @@ interoperability routes, and the broader WFIT ecosystem.
 
 `/evidence` on the live deployment is generated from this deployment's own records: the environment, credited
 deposits with their source transaction, duplicate submissions prevented, rejected deposits with reasons and
-zero credits, settled withdrawals with the Cardano transaction hash, reserve thresholds and health, the credit
-conservation check, and the failure rules the code enforces.
+zero credits, settled withdrawals with the Cardano transaction hash, reserve thresholds and health, credit
+liability against settlement capacity, the credit conservation check, the declared-but-unintegrated liquidity
+routes, and the failure rules the code enforces.
+
+The settlement path is also **reproducible on demand** rather than only historical: `npm run demo:settlement`
+re-runs deposit → validation → credits → withdrawal → settlement → confirmation unattended, and re-checks the
+resulting transaction against Koios independently. A recorded run is in
+[`docs/preprod-settlement-run.json`](docs/preprod-settlement-run.json).
 
 ## Preprod deployment
 
@@ -544,7 +671,10 @@ port, pm2 process and wallet.
 
 - The settlement reserve is a **custodial hot wallet**. No smart-contract vault, no multi-signature.
 - The **production conversion and rebalancing provider must be explicitly declared and integrated** before a
-  mainnet pilot. This implementation records the operation; it does not perform it.
+  mainnet pilot. This implementation raises the request and records the operation; it does not perform it, and
+  no provider in `server/providers/registry.ts` is connected.
+- **Reserve coverage figures on this deployment are faucet-funded** and evidence the mechanism, not a treasury
+  policy. Threshold sizing against real liabilities is pilot work.
 - The **CEX route is manual**. No exchange API is integrated, and none is claimed.
 - **tADA demonstrates settlement mechanics, not stablecoin peg behaviour.**
 - The preprod asset named USDCx is **not presented as issuer-confirmed**, and is disabled by default.
@@ -568,6 +698,48 @@ npm run test
 Fund the printed address from the [Cardano testnet faucet](https://docs.cardano.org/cardano-testnets/tools/faucet).
 See `.env.example` for every variable; only `SESSION_SECRET` and `ADMIN_PASSWORD` have no default, and the
 process refuses to start without them.
+
+### The preprod settlement wallet
+
+The settlement wallet is a **dedicated Cardano preprod test wallet**, created by `npm run wallet:create` for
+this gateway alone. It is not shared with any production system, any other application, or any other wallet on
+the host, and it can never be pointed at mainnet: `server/config.ts` refuses to start on any network other than
+preprod or preview, so a misconfiguration cannot aim the signer at real funds.
+
+| | |
+|---|---|
+| Network | Cardano **preprod** (testnet) |
+| Address | `addr_test1vz3scr56jxyl7qez7c8m8z75r73vuhhs0kjl8tjp06yqvjga9h60a` |
+| Purpose | settlement payouts for this gateway only |
+| Key location | outside the repository, `SETTLEMENT_KEY_PATH`, mode `600` |
+
+**How signing access is provided.** The bech32 `ed25519_sk` lives in a file on the deployment host, outside the
+repository and outside the database, referenced only by path. `server/settlement/cardano.ts` reads it on first
+use, **refuses to load it if the file is group- or world-readable**, and never logs, returns or transmits it.
+No seed phrase, private key or mnemonic appears anywhere in this repository, in `.env.example`, or in any API
+response — the gateway publishes only the public address. That is the whole of the signing model: a hot key on
+a host, appropriate for a preprod demonstration and explicitly named as a limitation for production, where the
+custodial hot wallet is expected to be replaced.
+
+**Funding it manually.** Send test liquidity straight to the address above:
+
+- **tADA** — from the [Cardano testnet faucet](https://docs.cardano.org/cardano-testnets/tools/faucet), for
+  both payouts and transaction fees. Native-asset payouts also carry min-UTxO ADA, so the vault needs tADA
+  regardless of which asset it settles.
+- **A preprod native test asset** (for example the registry-listed preprod USDCx) — send it to the same
+  address and enable it for settlement with `SETTLEMENT_USDCX_ENABLED=true`. The vault reads whatever it holds;
+  nothing needs to be registered by hand.
+
+Then confirm what actually arrived:
+
+```bash
+npm run reserve:check      # address, per-asset on-chain balances, and a warning if the key and the configured address disagree
+curl -s localhost:4523/api/reserve
+```
+
+Both read the balance from the chain, not from any record inside the gateway. The vault address, its incoming
+funding, its outgoing settlements and every transaction hash are also shown on `/evidence` with explorer links,
+so the wallet can be audited without access to this deployment.
 
 ### Rotating the settlement key
 

@@ -1,5 +1,6 @@
 import type {
-  Deposit, FundingRoute, LedgerEntry, Rebalance, ReserveStatus, SettlementAsset, SettlementTarget, Withdrawal,
+  Deposit, FundingRoute, LedgerEntry, LiquidityProviderRoute, Rebalance, ReserveStatus, SettlementAsset,
+  SettlementTarget, Withdrawal,
 } from "./shared/types.js";
 
 export interface Outcome {
@@ -185,6 +186,12 @@ export interface EvidenceResponse {
     checkedAt: number;
   };
   reserve: ReserveStatus | null;
+  liquidityRoutes: LiquidityProviderRoute[];
+  providerIntegrationStatus: {
+    integratedProviders: string[];
+    executedConversions: number;
+    statement: string;
+  };
 }
 
 /** Display helper for integer base units. Balances never become floats server-side. */

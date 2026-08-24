@@ -20,7 +20,8 @@
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "wallet:create": "tsx scripts/create-settlement-wallet.ts",
-    "reserve:check": "tsx scripts/reserve-check.ts"
+    "reserve:check": "tsx scripts/reserve-check.ts",
+    "demo:settlement": "tsx scripts/demo-settlement.ts"
   },
   "dependencies": {
     "@lucid-evolution/lucid": "^0.4.34",

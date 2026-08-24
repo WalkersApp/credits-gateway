@@ -1,0 +1,47 @@
+{
+  "demonstration": "preprod automated settlement demonstration using test liquidity",
+  "disclaimer": "Cardano preprod only, using test liquidity. Proves the gateway's settlement execution path. Not production liquidity, not a treasury operation, not production USDM/USDCx settlement, and no external provider is involved. Production USDM/USDCx settlement depends on final liquidity, treasury and provider setup during the pilot phase.",
+  "network": "cardano-preprod",
+  "gateway": "http://127.0.0.1:4523",
+  "gatewayNote": "Invoked on the deployment host, so the script addressed the gateway over loopback. It is the same process and database that serves https://wfit-gateway.anchorflow.cloud; both transaction hashes below are public and resolve in any Cardano preprod explorer.",
+  "ranAt": "2026-08-24T16:42:27.018Z",
+  "durationSeconds": 145,
+  "deposit": {
+    "id": "d54ef2ca-7f36-4155-9f6c-034cd220a89a",
+    "txHash": "2b1189ad9f8579b44769f5a0229d4a244f9ca133ae95c8b7dce97fae7351b2e5",
+    "explorerUrl": "https://preprod.cardanoscan.io/transaction/2b1189ad9f8579b44769f5a0229d4a244f9ca133ae95c8b7dce97fae7351b2e5",
+    "creditsIssued": 5,
+    "verification": "on-chain automatic"
+  },
+  "settlement": {
+    "withdrawalId": "88a52697-10e7-4c63-9b16-2fe5186829b5",
+    "creditsLocked": 5,
+    "fee": 0.275,
+    "settlementAsset": "tusdm-preprod",
+    "amountSettled": 4.725,
+    "destinationAddress": "addr_test1vp85juyu2hh5uacpadjwcgtcv6jdk75yuva987vclx3lcqc24qk0p",
+    "txHash": "8c2a2a5d8c3974176d36fff29386200ac10e168d2a53d0199cacf63b47cda11e",
+    "explorerUrl": "https://preprod.cardanoscan.io/transaction/8c2a2a5d8c3974176d36fff29386200ac10e168d2a53d0199cacf63b47cda11e",
+    "confirmationsAtCheck": 2,
+    "submittedAt": "2026-08-24T16:43:31.580Z",
+    "confirmedAt": "2026-08-24T16:44:43.523Z",
+    "secondsRequestToConfirm": 73
+  },
+  "vault": {
+    "address": "addr_test1vz3scr56jxyl7qez7c8m8z75r73vuhhs0kjl8tjp06yqvjga9h60a",
+    "explorerUrl": "https://preprod.cardanoscan.io/address/addr_test1vz3scr56jxyl7qez7c8m8z75r73vuhhs0kjl8tjp06yqvjga9h60a",
+    "tadaBalanceBefore": 755.277441,
+    "tadaBalanceAfter": 754.04983,
+    "settlementAssetBalanceBefore": 300,
+    "settlementAssetBalanceAfter": 295.275,
+    "healthAfter": "healthy"
+  },
+  "credits": {
+    "userBalanceAfter": 0,
+    "outstandingLiability": 95,
+    "settlementCapacity": 1049.32483,
+    "coveragePercent": 1104.55
+  },
+  "settlementAssetNote": "tUSDM is a Cardano preprod TEST asset (policy 11c93226aabf1e9157620857d9ac013ba111680bd837f62a7ca90214, asset name 0014df10745553444d, CIP-68 label 333, 6 decimals). Its on-chain metadata is self-asserted, the subject is not in the Cardano Foundation preprod token metadata registry, and no issuer relationship exists. It is test liquidity representing the USDM settlement path, not production USDM.",
+  "onChainVerification": "Independently confirmed via Koios tx_info: the destination output holds 4.725 tUSDM plus 1.05595 ADA of min-UTxO, and the vault retained 295.275 tUSDM."
+}

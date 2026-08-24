@@ -39,8 +39,10 @@ export function Evidence({ config }: { config: GatewayConfig }) {
       <p className="sub">
         Scope: a standalone gateway deployment on Cardano {network}, with its own database, process and signing
         key. It is not connected to any production application, and no mainnet funds are reachable from it —
-        the network setting refuses anything but preprod and preview. The settlement asset exercised below is
-        tADA, which evidences the settlement mechanism and not stablecoin peg behaviour.
+        the network setting refuses anything but preprod and preview. The settlement assets exercised below are
+        tADA and a preprod <strong>tUSDM test asset</strong> — a preprod automated settlement demonstration
+        using test liquidity. Both evidence the settlement mechanism, not stablecoin peg behaviour and not an
+        issuer relationship.
       </p>
 
       <h2>1 · Environment</h2>
@@ -238,7 +240,7 @@ export function Evidence({ config }: { config: GatewayConfig }) {
                 <td>{a.label}</td>
                 <td>{fmt(a.balanceUnits)}</td>
                 <td className="sub">{fmt(a.lockedUnits)}</td>
-                <td>{fmt(a.balanceUnits - a.lockedUnits)}</td>
+                <td>{fmt(a.availableUnits)}</td>
                 <td className="sub">{fmt(a.criticalUnits)}</td>
                 <td className="sub">{fmt(a.minUnits)}</td>
                 <td className="sub">{fmt(a.targetUnits)}</td>
@@ -254,7 +256,52 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </p>
       </div>
 
-      <h2>9 · Accounting integrity</h2>
+      <h2>9 · Credit liability against settlement capacity</h2>
+      <div className="card">
+        {data.reserve ? (
+          <>
+            <dl className="kv">
+              <dt>Outstanding credits</dt>
+              <dd>
+                {fmt(data.reserve.liability.outstandingCreditUnits)}
+                <span className="sub"> ({fmt(data.reserve.liability.availableCreditUnits)} available,
+                  {" "}{fmt(data.reserve.liability.lockedCreditUnits)} locked in settlements)</span>
+              </dd>
+              <dt>Settlement capacity</dt>
+              <dd>{fmt(data.reserve.liability.totalCapacityCreditUnits)} <span className="sub">credit-equivalent, free on chain</span></dd>
+              <dt>Surplus</dt><dd>{fmt(data.reserve.liability.surplusCreditUnits)}</dd>
+              <dt>Coverage</dt>
+              <dd>
+                {data.reserve.liability.coverageBps === null
+                  ? <span className="sub">no outstanding credits to cover</span>
+                  : <span className={`pill ${data.reserve.liability.fullyCovered ? "good" : "bad"}`}>
+                      {(data.reserve.liability.coverageBps / 100).toFixed(1)}%
+                    </span>}
+              </dd>
+            </dl>
+            <p className="sub">
+              Liability is read from the credit ledger; capacity is read from the vault's balance on chain. The two
+              are measured independently on purpose — no operator entry, and no rebalance record, can make the
+              gateway look solvent. Capacity is stated in credit-equivalent units at this deployment's settlement
+              rate so the two figures are comparable.
+            </p>
+            {data.reserve.warnings.length > 0 ? (
+              <ul className="plain">
+                {data.reserve.warnings.map((w, i) => (
+                  <li key={i}>
+                    <span className={`pill ${w.severity === "critical" ? "bad" : w.severity === "warning" ? "warn" : ""}`}>
+                      {w.severity}
+                    </span>{" "}
+                    {w.message}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="sub">No reserve warnings are active.</p>}
+          </>
+        ) : <p className="sub">Reserve unavailable.</p>}
+      </div>
+
+      <h2>10 · Accounting integrity</h2>
       <div className="card">
         <dl className="kv">
           <dt>Ledger supply</dt><dd>{fmt(data.integrity.ledgerSupplyUnits)} credits</dd>
@@ -273,7 +320,7 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </p>
       </div>
 
-      <h2>10 · Withdrawals held or returned</h2>
+      <h2>11 · Withdrawals held or returned</h2>
       <div className="card scroll">
         <table>
           <thead><tr><th>Status</th><th>Credits</th><th>Transaction</th><th>Reason</th></tr></thead>
@@ -293,7 +340,7 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </table>
       </div>
 
-      <h2>11 · Lifecycle and refunds</h2>
+      <h2>12 · Lifecycle and refunds</h2>
       <div className="card scroll">
         <table>
           <thead><tr><th>Deposit state</th><th>Meaning</th><th>Can move to</th></tr></thead>
@@ -323,7 +370,7 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </dl>
       </div>
 
-      <h2>12 · Failure behaviour</h2>
+      <h2>13 · Failure behaviour</h2>
       <p className="sub">
         The rules the code enforces. Rows without a record above have not occurred on this deployment; they are
         covered by the test suite rather than by a live record, and we do not manufacture records to fill them.
@@ -349,14 +396,50 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </table>
       </div>
 
-      <h2>13 · What this does and does not establish</h2>
+      <h2>14 · Liquidity routes — declared, not integrated</h2>
+      <div className="card scroll">
+        <p className="sub">{data.providerIntegrationStatus.statement}</p>
+        <table>
+          <thead><tr><th>Route</th><th>Source</th><th>Destination</th><th>Status</th><th>Would require</th></tr></thead>
+          <tbody>
+            {data.liquidityRoutes.map((r) => (
+              <tr key={r.id}>
+                <td>{r.label}</td>
+                <td className="sub">{r.sourceAsset} on {r.sourceNetwork}</td>
+                <td className="sub">{r.destinationAssetId} on {r.destinationNetwork}</td>
+                <td><span className="pill warn">future integration</span></td>
+                <td className="sub">{r.requirements.join("; ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="sub">
+          These are named so the interface a pilot integration must satisfy is visible. Naming a provider is not
+          integrating one: there are no credentials, no API calls and no executed conversions in this codebase, and
+          the code path that would run one raises <span className="mono">provider_not_integrated</span> by design.
+          Conversions counted so far: {data.providerIntegrationStatus.executedConversions}.
+        </p>
+      </div>
+
+      <h2>15 · What this does and does not establish</h2>
       <div className="card">
         <ul className="plain">
           <li><strong>Established:</strong> on-chain deposit verification, idempotent credits issuance, accounting
             integrity, reserve checks, withdrawal orchestration, failure handling, and real Cardano {network}
             settlement — exercised end to end on this deployment.</li>
-          <li><strong>Not established:</strong> USDM or USDCx payouts. No USDM or USDCx settlement has been made
-            here. The settlement asset exercised is tADA, which proves the settlement mechanism, not peg behaviour.</li>
+          <li><strong>Not established:</strong> production USDM or USDCx payouts. None has been made here. The
+            assets exercised are tADA and a preprod <strong>tUSDM test asset</strong> whose on-chain metadata is
+            self-asserted and which is absent from the Cardano Foundation preprod token registry — test
+            liquidity, not production USDM, and no issuer relationship exists. Production USDM/USDCx settlement
+            depends on final liquidity, treasury and provider setup during the pilot phase.</li>
+          <li><strong>Reproducible:</strong> the whole path above can be re-run on demand with
+            <span className="mono"> npm run demo:settlement</span>, which drives this deployment's own HTTP API —
+            on-chain deposit, validation, credits, withdrawal, vault signature, settlement, confirmation — and then
+            verifies the resulting transaction against Koios independently of the gateway. It exits non-zero if the
+            settlement does not confirm, so it cannot report a success it did not achieve.</li>
+          <li><strong>Framework only:</strong> reserve thresholds are monitored and a low reserve raises a
+            rebalance <em>request</em> for a treasury operator. The gateway never moves liquidity itself, and
+            marking a rebalance complete grants no settlement capacity — capacity is always re-read from the chain.</li>
           <li><strong>Not automated:</strong> the exchange funding route, and the conversion of external stablecoin
             liquidity into Cardano settlement liquidity. Both are operator processes recorded by the gateway.</li>
           <li><strong>Not integrated:</strong> this is a standalone infrastructure layer. It is not wired into

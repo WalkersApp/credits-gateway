@@ -135,20 +135,62 @@ export interface Withdrawal {
   refundedAt: number | null;
 }
 
+export interface ReserveAssetStatus {
+  assetId: string;
+  label: string;
+  balanceUnits: number;
+  lockedUnits: number;      // committed to withdrawals not yet on chain
+  /** balance - locked: what a new withdrawal could actually draw on. */
+  availableUnits: number;
+  /** availableUnits expressed back in credit units at the server-side rate, so
+   *  reserve capacity and credit liability can be compared in one unit. */
+  capacityCreditUnits: number;
+  criticalUnits: number;
+  minUnits: number;
+  targetUnits: number;
+  /** How far below `targetUnits` the free balance sits (0 when at or above). */
+  shortfallToTargetUnits: number;
+  health: "healthy" | "low" | "critical";
+  official: boolean;
+}
+
+/**
+ * Outstanding credits are the gateway's liability: every credit issued and not
+ * yet settled is a claim someone may present. Coverage compares that liability
+ * against the settlement capacity actually held on chain.
+ */
+export interface ReserveLiability {
+  /** Credits in user accounts, available + locked. */
+  outstandingCreditUnits: number;
+  availableCreditUnits: number;
+  lockedCreditUnits: number;
+  /** Total capacity across enabled settlement assets, in credit units. */
+  totalCapacityCreditUnits: number;
+  /** capacity - liability. Negative means the reserve cannot cover every credit. */
+  surplusCreditUnits: number;
+  /** Basis points of the liability covered by reserve capacity; 10000 = 100%.
+   *  Null when there is no outstanding liability to cover. */
+  coverageBps: number | null;
+  fullyCovered: boolean;
+}
+
+export interface ReserveWarning {
+  severity: "info" | "warning" | "critical";
+  code:
+    | "reserve_low"
+    | "reserve_critical"
+    | "liability_uncovered"
+    | "capacity_below_max_withdrawal";
+  assetId: string | null;
+  message: string;
+}
+
 export interface ReserveStatus {
   network: string;
   vaultAddress: string;
-  assets: Array<{
-    assetId: string;
-    label: string;
-    balanceUnits: number;
-    lockedUnits: number;      // committed to withdrawals not yet on chain
-    criticalUnits: number;
-    minUnits: number;
-    targetUnits: number;
-    health: "healthy" | "low" | "critical";
-    official: boolean;
-  }>;
+  assets: ReserveAssetStatus[];
+  liability: ReserveLiability;
+  warnings: ReserveWarning[];
   checkedAt: number;
 }
 
@@ -164,7 +206,41 @@ export interface Rebalance {
   reference: string | null;
   status: "planned" | "processing" | "completed" | "failed";
   note: string;
+  /** "auto" when the gateway raised this request itself because the reserve fell
+   *  below its threshold; "admin" when a person booked it. An auto request is a
+   *  request for a human to act — the gateway never moves liquidity itself. */
+  origin: "auto" | "admin";
+  /** Set on auto requests: what the reserve looked like when it was raised. */
+  trigger: {
+    assetId: string;
+    availableUnits: number;
+    minUnits: number;
+    targetUnits: number;
+    health: "low" | "critical";
+  } | null;
   createdAt: number;
   updatedAt: number;
   completedAt: number | null;
+}
+
+/**
+ * A liquidity route the gateway could one day use to convert external
+ * stablecoin liquidity into a Cardano settlement asset.
+ *
+ * NOTHING here is integrated. Every route is declared with
+ * `status: "future_integration"` and no code path can execute one — the registry
+ * exists so the interface a pilot integration must satisfy is visible and typed,
+ * not to imply a connection that does not exist.
+ */
+export interface LiquidityProviderRoute {
+  id: string;
+  label: string;
+  sourceNetwork: string;
+  sourceAsset: string;
+  destinationAssetId: string;
+  destinationNetwork: string;
+  status: "future_integration";
+  /** What would have to be true before this route could be enabled. */
+  requirements: string[];
+  note: string;
 }

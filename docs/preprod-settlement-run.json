@@ -1,0 +1,43 @@
+{
+  "demonstration": "preprod automated settlement demonstration",
+  "disclaimer": "Cardano preprod only. Proves the gateway's settlement execution path. Not production liquidity, not a treasury operation, and no external provider is involved.",
+  "network": "cardano-preprod",
+  "gateway": "http://127.0.0.1:4523",
+  "gatewayNote": "Invoked on the deployment host, so the script addressed the gateway over loopback. It is the same process and the same database that serves https://wfit-gateway.anchorflow.cloud; both transaction hashes below are public and resolve in any Cardano preprod explorer.",
+  "ranAt": "2026-08-24T16:15:23.182Z",
+  "durationSeconds": 165,
+  "deposit": {
+    "id": "4c837da6-97bb-4026-8b97-3ae675e50162",
+    "txHash": "5f5f5084a119ba4f13a503493362401d14adc16733b2c5327e3e351e5faefdc5",
+    "explorerUrl": "https://preprod.cardanoscan.io/transaction/5f5f5084a119ba4f13a503493362401d14adc16733b2c5327e3e351e5faefdc5",
+    "creditsIssued": 5,
+    "verification": "on-chain automatic"
+  },
+  "settlement": {
+    "withdrawalId": "d32d569d-200d-4e14-9c1b-9ff72e021a8f",
+    "creditsLocked": 5,
+    "fee": 0.275,
+    "settlementAsset": "tada",
+    "amountSettled": 4.725,
+    "destinationAddress": "addr_test1vp85juyu2hh5uacpadjwcgtcv6jdk75yuva987vclx3lcqc24qk0p",
+    "txHash": "dcbd5183d598be7615ced8800c548a39356da1fce17be38e04560eb9267be009",
+    "explorerUrl": "https://preprod.cardanoscan.io/transaction/dcbd5183d598be7615ced8800c548a39356da1fce17be38e04560eb9267be009",
+    "confirmationsAtCheck": 1,
+    "submittedAt": "2026-08-24T16:17:46.647Z",
+    "confirmedAt": "2026-08-24T16:18:06.140Z",
+    "secondsRequestToConfirm": 21
+  },
+  "vault": {
+    "address": "addr_test1vz3scr56jxyl7qez7c8m8z75r73vuhhs0kjl8tjp06yqvjga9h60a",
+    "explorerUrl": "https://preprod.cardanoscan.io/address/addr_test1vz3scr56jxyl7qez7c8m8z75r73vuhhs0kjl8tjp06yqvjga9h60a",
+    "tadaBalanceBefore": 750.168294,
+    "tadaBalanceAfter": 745.277441,
+    "healthAfter": "healthy"
+  },
+  "credits": {
+    "userBalanceAfter": 0,
+    "outstandingLiability": 95,
+    "settlementCapacity": 745.277441,
+    "coveragePercent": 784.5
+  }
+}

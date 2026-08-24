@@ -22,6 +22,7 @@ import {
 import { GatewayError } from "./errors.js";
 import { FUNDING_ROUTES } from "./fundingRoutes.js";
 import { newId } from "./ids.js";
+import { listLiquidityRoutes, PROVIDER_INTEGRATION_STATUS } from "./providers/registry.js";
 import { listRebalances, recordRebalance, updateRebalance } from "./rebalance.js";
 import { rateLimit } from "./rateLimit.js";
 import { getReserveStatus, snapshotReserve } from "./reserve.js";
@@ -224,6 +225,8 @@ export function createApp() {
       withdrawalLifecycle: WITHDRAWAL_LIFECYCLE,
       refundPolicy: REFUND_POLICY,
       settlementDirection: SETTLEMENT_DIRECTION,
+      liquidityRoutes: listLiquidityRoutes(),
+      providerIntegrationStatus: PROVIDER_INTEGRATION_STATUS,
     });
   }));
 

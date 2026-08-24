@@ -6,6 +6,7 @@
 import { config } from "./config.js";
 import { deposits, withdrawals } from "./db.js";
 import { validateDeposit } from "./deposits/service.js";
+import { requestRebalancesForLowReserves } from "./rebalance.js";
 import { snapshotReserve } from "./reserve.js";
 import { confirmSettlement, settleWithdrawal } from "./withdrawals/service.js";
 
@@ -38,7 +39,22 @@ async function tick(): Promise<void> {
 
     if (Date.now() - lastSnapshot > SNAPSHOT_EVERY_MS) {
       lastSnapshot = Date.now();
-      await snapshotReserve().catch((err) => console.error("[jobs] reserve snapshot:", err.message));
+      // The snapshot is also the reserve reading the rebalance check runs on, so
+      // a low reserve raises its request at most once per snapshot interval.
+      const status = await snapshotReserve().catch((err) => {
+        console.error("[jobs] reserve snapshot:", err.message);
+        return null;
+      });
+      if (status) {
+        const raised = await requestRebalancesForLowReserves(status)
+          .catch((err) => {
+            console.error("[jobs] rebalance request:", err.message);
+            return [];
+          });
+        for (const r of raised) {
+          console.warn(`[jobs] raised rebalance request ${r.id} for ${r.destinationAssetId} (${r.trigger?.health})`);
+        }
+      }
     }
   } finally {
     running = false;

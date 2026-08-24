@@ -13,3 +13,6 @@ process.env.CARDANO_NETWORK ??= "preprod";
 process.env.BACKGROUND_JOBS = "false";
 process.env.SEPOLIA_DEPOSIT_ADDRESS ??= "0x0000000000000000000000000000000000000001";
 process.env.CARDANO_DEPOSIT_ADDRESS ??= "addr_test1vpplaceholderdepositaddressfortestsonly000000000000000";
+// Exercise the tUSDM settlement path in tests regardless of how the deployment
+// is configured. It is a preprod test asset; nothing here touches real value.
+process.env.SETTLEMENT_TUSDM_ENABLED ??= "true";

@@ -28,8 +28,19 @@ Exercised end to end on the preprod deployment, with transaction hashes in the R
 - **Credit accounting** — append-only ledger, unique idempotency keys, and a conservation check that halts
   settlement on any drift.
 - **Cardano settlement flow** — build, sign, submit, confirm, reconcile, from the gateway's own vault key.
-- **Reserve protection** — per-asset thresholds, committed-versus-free liquidity, settlements refused before
-  any credits are locked.
+- **Reserve protection** — per-asset thresholds, committed-versus-free liquidity, outstanding credit
+  liability tracked against on-chain settlement capacity, settlements refused before any credits are locked.
+- **Preprod automated settlement demonstration using test liquidity** — the same path settling a
+  dollar-denominated native asset (a preprod **tUSDM test asset**) rather than only tADA, which exercises
+  native-asset coin selection and the min-UTxO ADA that leaves the vault with the token. Test liquidity only:
+  **not production USDM**, and production USDM/USDCx settlement depends on final liquidity, treasury and
+  provider setup during the pilot phase.
+- **Reproducible settlement demonstration** — `npm run demo:settlement` re-runs the full path unattended
+  (on-chain deposit → validation → credits → withdrawal → vault signature → submission → confirmation) and
+  then verifies the resulting transaction against Koios independently of the gateway, exiting non-zero if it
+  cannot. A recorded run, with both transaction hashes, is in `docs/preprod-settlement-run.json`.
+- **Rebalancing framework** — a free reserve below its minimum raises a rebalance *request* automatically, at
+  most one open per asset. The gateway never moves liquidity itself.
 - **Failure handling** — rejected deposits, duplicate submissions, pre-broadcast refunds, and unproven submits
   held for review with credits locked rather than guessed at.
 - **Operational visibility** — `/architecture` and `/evidence` rendered from this deployment's own
@@ -37,10 +48,19 @@ Exercised end to end on the preprod deployment, with transaction hashes in the R
 
 ## 3. What the pilot does not demonstrate
 
-- **Production USDM settlement.** No USDM payout has been made by this deployment.
+- **Production USDM settlement.** No production USDM payout has been made by this deployment. A preprod
+  **tUSDM test asset** has been settled to exercise the path for a dollar-denominated native asset; its
+  on-chain metadata is self-asserted, the subject is absent from the Cardano Foundation preprod token
+  registry, and no issuer relationship exists. Test liquidity is not production liquidity.
 - **Production USDCx settlement.** No USDCx payout has been made by this deployment.
-- **Automated liquidity conversion.** Conversion and rebalancing are operator processes that the gateway
-  records, not performs.
+- **Automated liquidity conversion.** The gateway raises rebalance requests and records outcomes; the
+  conversion itself is an operator process it does not perform.
+- **Provider integrations.** `server/providers/registry.ts` declares the Circle/USDC, USDM issuer and Cardano
+  DEX routes as typed interfaces marked `future_integration`, together with the `LiquidityProvider` interface
+  a pilot integration would implement. None is connected: no implementation of that interface exists in the
+  repository, no credential and no API call. The registry records zero integrated providers and zero executed
+  conversions, and the function that would execute a route raises `provider_not_integrated` by design, so a
+  later change cannot quietly turn a declaration into an implied capability.
 - **Exchange integrations.** The exchange funding route is manual and admin-approved. No exchange API is
   integrated.
 
@@ -227,13 +247,19 @@ funds. The gateway is not, and is not described as, non-custodial.
 |---|---|---|
 | Reserve monitoring | on-chain balance read per settlement asset, free = balance − committed | unchanged, plus alerting |
 | Thresholds | configured per asset in base units: critical / minimum / target | unchanged, sized against observed pool depth |
-| Rebalance trigger | an operator reads the reserve state and decides | reserve-triggered rebalance records raised automatically |
+| Rebalance trigger | a rebalance **request** is raised automatically when free reserve falls below minimum, at most one open per asset; a person decides what to do about it | unchanged, plus alerting and provider routing |
 | Conversion itself | **a manual treasury action, entirely outside this system** | provider-integrated, with quote and slippage pre-checks and policy-bounded signing |
 | Recording | an admin books the rebalance and what actually arrived | written automatically from the provider response |
 | Verification | the vault's on-chain balance, read independently of the record | plus on-chain verification of the mint transaction, and reverse-leg monitoring |
 
-No automated job in this deployment creates, triggers or completes a rebalance. Percentages, provider names
-and pool sizes are deliberately not quoted: none has been selected, and any figure would date.
+**The boundary, precisely.** A background job creates rebalance *requests* — a `planned` record with no
+provider and no source assigned, because the gateway knows the reserve is short but not where liquidity should
+come from. **No automated job moves liquidity, executes a conversion, contacts a provider, or completes a
+rebalance.** A request is a signal for a human; everything after it is a treasury action outside this system.
+Marking a rebalance completed grants no settlement capacity either: capacity is re-read from the vault's
+on-chain balance, so a top-up booked but never received leaves the reserve exactly as short as it was, and
+there is a test asserting that. Percentages, provider names and pool sizes are deliberately not quoted: none
+has been selected, and any figure would date.
 
 Threshold semantics, per settlement asset, where free = on-chain balance − committed to unsettled withdrawals:
 `free ≥ target` healthy · `minimum ≤ free < target` monitor · `critical ≤ free < minimum` rebalance required ·
@@ -319,8 +345,10 @@ already spent and the node rejects the duplicate.
 ## 7. Technology readiness
 
 **TRL 5.** Core integrated components validated in a relevant environment: real on-chain deposit verification,
-idempotent credits issuance, accounting integrity controls, reserve checks, withdrawal orchestration, failure
-handling and real Cardano preprod settlement, exercised end to end.
+idempotent credits issuance, accounting integrity controls, reserve and liability tracking, withdrawal
+orchestration, failure handling and real Cardano preprod settlement, exercised end to end — and reproducible
+on demand rather than only historical, via an unattended demonstration that verifies its own result against a
+third-party indexer.
 
 The pilot extends this into production USDM/USDCx settlement liquidity, a contracted production conversion
 route, and the broader WFIT ecosystem.
@@ -339,6 +367,18 @@ has been performed. Claiming TRL 6 would require exactly the work this pilot pro
 the same signing scheme and the same indexer APIs as mainnet, differing in the value at stake and the assets
 available. That makes it the right environment to validate a settlement engine, and the wrong environment to
 validate a stablecoin peg or an issuer relationship — which is why neither is claimed.
+
+## 7a. Preprod deployment validates the execution path
+
+The preprod deployment validates the gateway settlement execution path: deposit validation, credit accounting,
+reserve and liability tracking, withdrawal orchestration, transaction construction, signing, submission and
+confirmation, end to end and repeatably. **Production liquidity management, treasury operations and external
+provider integrations will be completed during the pilot phase.**
+
+Read the split this way: what is *proven* is the infrastructure and the settlement execution path on preprod;
+what is *demonstrated* is that path re-running unattended against a live chain; what is *future pilot work* is
+production USDM/USDCx liquidity, the treasury and vault model, liquidity provider selection and integration,
+mainnet deployment, rebalancing automation beyond request-raising, and third-party security hardening.
 
 ## 8. What remains open
 

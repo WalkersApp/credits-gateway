@@ -133,24 +133,55 @@ export async function getAllReserveBalances(assetIds: string[]): Promise<Reserve
 export interface SettlementEstimate {
   assetId: string;
   amountUnits: number;
+  /** Vault balance of the settlement asset itself. */
   reserveUnits: number;
   sufficient: boolean;
   /** Rough network fee in lovelace. Real fee is computed when the tx is built. */
   networkFeeLovelace: number;
+  /** Vault ADA balance, and the ADA this payout consumes. For a native-asset
+   *  payout the token balance is only half the question: the output carrying the
+   *  token must also hold min-UTxO ADA, and the fee is paid in ADA too. */
+  adaReserveLovelace: number;
+  adaRequiredLovelace: number;
+  /** Which side is short, when `sufficient` is false. */
+  shortfall: "none" | "asset" | "ada";
 }
 
+/** Min-UTxO for an output holding one native asset, with headroom. A payout
+ *  output with a single policy costs roughly 1.2 ADA under current protocol
+ *  parameters; the exact figure is computed by the builder when the transaction
+ *  is balanced. */
+const NATIVE_ASSET_MIN_UTXO_LOVELACE = 1_500_000;
+const ESTIMATED_FEE_LOVELACE = 200_000;
+
 export async function estimateSettlement(assetId: string, amountUnits: number): Promise<SettlementEstimate> {
-  const reserveUnits = await getReserveBalance(assetId);
   const asset = getSettlementAsset(assetId);
-  // Native-asset payouts also carry ~1.2 ADA of min-UTxO that leaves the vault
-  // with the token, so an ADA reserve is required either way.
-  const needed = asset.unit === "lovelace" ? amountUnits + 1_500_000 : amountUnits;
+  const isAda = asset.unit === "lovelace";
+
+  // For a native asset we need two independent balances, so read the ADA one too.
+  const [reserveUnits, adaReserveLovelace] = await Promise.all([
+    getReserveBalance(assetId),
+    isAda ? Promise.resolve(0) : getReserveBalance("tada"),
+  ]);
+
+  const adaRequiredLovelace = isAda
+    ? amountUnits + ESTIMATED_FEE_LOVELACE
+    : NATIVE_ASSET_MIN_UTXO_LOVELACE + ESTIMATED_FEE_LOVELACE;
+
+  // ADA payouts are checked against one balance; native-asset payouts against
+  // both, because a vault rich in tokens and out of ADA cannot pay either.
+  const assetOk = isAda ? reserveUnits >= adaRequiredLovelace : reserveUnits >= amountUnits;
+  const adaOk = isAda ? assetOk : adaReserveLovelace >= adaRequiredLovelace;
+
   return {
     assetId,
     amountUnits,
     reserveUnits,
-    sufficient: reserveUnits >= needed,
-    networkFeeLovelace: 200_000,
+    sufficient: assetOk && adaOk,
+    networkFeeLovelace: ESTIMATED_FEE_LOVELACE,
+    adaReserveLovelace: isAda ? reserveUnits : adaReserveLovelace,
+    adaRequiredLovelace,
+    shortfall: !assetOk ? "asset" : !adaOk ? "ada" : "none",
   };
 }
 
@@ -180,7 +211,11 @@ export async function submitSettlement(opts: {
 
   const estimate = await estimateSettlement(opts.assetId, opts.amountUnits);
   if (!estimate.sufficient) {
-    throw new InsufficientReserveError(opts.assetId, estimate.reserveUnits, opts.amountUnits);
+    // An ADA shortfall on a native-asset payout is reported against the ADA
+    // balance, not the token balance, so the operator tops up the right one.
+    throw estimate.shortfall === "ada"
+      ? new InsufficientReserveError("tada", estimate.adaReserveLovelace, estimate.adaRequiredLovelace)
+      : new InsufficientReserveError(opts.assetId, estimate.reserveUnits, opts.amountUnits);
   }
 
   const lucid = await getLucid();
