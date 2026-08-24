@@ -165,11 +165,20 @@ export function Architecture({ config }: { config: GatewayConfig }) {
           settlement mechanism, not stablecoin peg behaviour.
         </p>
         <p className="sub">
-          <strong>Three different USDCx references, three different states.</strong> The preprod USDCx{" "}
+          <strong>Registered, enabled and exercised are three different things.</strong> Registered means the
+          settlement-asset registry knows the asset; enabled means this deployment will select it for a
+          payout; exercised means a transaction exists. Only tADA is all three. USDM and USDCx are{" "}
+          <strong>registered production targets — not enabled, not exercised</strong>, and they sit at the
+          same level of support: they differ in how the reserve would be sourced, not in how the gateway
+          settles them. Nothing here ranks one above the other.
+        </p>
+        <p className="sub">
+          <strong>Four different USDCx references, four different states.</strong> The preprod USDCx{" "}
           <em>deposit route</em> is enabled but has not been exercised here. The preprod USDCx{" "}
-          <em>settlement asset</em> is disabled by default — a preprod registry entry, not an issuer-confirmed
-          asset. USDCx on <em>Cardano mainnet</em> is informational only: a production target, neither
-          deployed nor exercised by this deployment.
+          <em>settlement asset</em> is registered but disabled by default — a preprod registry entry, not an
+          issuer-confirmed asset. USDCx on <em>Cardano mainnet</em> is a registered production target, neither
+          enabled nor exercised. USDCx reached via <em>Circle xReserve</em> is a candidate reserve-funding
+          route identified by research — not integrated, and no relationship with the provider exists.
         </p>
       </div>
 
@@ -242,8 +251,20 @@ export function Architecture({ config }: { config: GatewayConfig }) {
         </p>
         <p className="sub">
           <strong>Today:</strong> reserve tracking read from the chain, rebalance records, and manual treasury
-          operations. <strong>Pilot work:</strong> selecting, declaring and integrating the production
-          liquidity and conversion route. No provider is named below, because none has been integrated.
+          operations. <strong>Pilot work:</strong> selecting and contracting the treasury route, completing any
+          issuer onboarding, and automating what can be automated — reserve-triggered rebalance records,
+          on-chain verification of the resulting mint transaction, swap quote and slippage pre-checks with
+          policy-bounded signing, and reverse-leg monitoring.
+        </p>
+        <p className="sub">
+          <strong>Candidate routes — none integrated.</strong> Normalisation through an exchange or an issuer
+          fiat account, then Cardano entry through Circle's xReserve minting USDCx to a WFIT-controlled
+          address, then — where USDM is required — either an on-chain swap from USDCx on a Cardano DEX or
+          direct issuance by the USDM issuer (Moneta, or NBX in the EEA). <strong>No account, agreement,
+          onboarding or API access exists with any party named, and none has been contacted.</strong> These
+          were identified by desk research: identification is not integration, and this page states them
+          separately. Regulatory descriptions are the providers' own statements about themselves; we report
+          them, we do not certify them.
         </p>
         <dl className="kv">
           <dt>Trigger</dt>

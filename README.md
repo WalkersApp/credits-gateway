@@ -103,6 +103,9 @@ of fee, and 49.5 tADA settled on chain. Both explorers resolve the hashes —
 
 Those four are pilot work. Nothing in this repository presents them as done.
 
+The full Catalyst answer, including the candidate production settlement route and the gap responses, is in
+[`docs/CATALYST.md`](docs/CATALYST.md).
+
 ## Architecture
 
 Three parts, and they do not leak into each other:
@@ -172,25 +175,42 @@ a unique index on `(network, txHash)` is what enforces it, not application logic
 `server/settlement/cardano.ts` builds, signs and submits real transactions from the gateway's own vault key
 using [lucid-evolution](https://github.com/Anastasia-Labs/lucid-evolution).
 
-| Asset | Network | Status |
-|---|---|---|
-| Preprod ADA (tADA) | preprod | the network's own asset, from the testnet faucet. **Exercised.** Not a stablecoin — it proves the settlement path, not the peg. |
-| USDCx (preprod), policy `31dde3db…bf66` | preprod | **test asset, disabled by default.** Registered in the Cardano Foundation preprod token metadata registry with 6 decimals. We have not identified issuer documentation confirming it as official Circle USDCx. |
-| USDM | mainnet | **production target.** Moneta publishes a mainnet policy id. We have not identified an issuer-confirmed USDM deployment on Cardano preprod. |
-| USDCx | mainnet | **production target.** Published mainnet policy id. |
+Three separate things get confused if they share one column, so they are kept apart. **Registered** means the
+settlement-asset registry knows the asset. **Enabled** means this deployment will select it for a payout.
+**Exercised** means a transaction exists. Only tADA is all three.
+
+| Asset | Registered | Enabled here | Exercised here |
+|---|---|---|---|
+| Preprod ADA (tADA) | yes | yes | **yes** — the only asset this deployment has settled |
+| USDCx preprod registry asset, policy `31dde3db…bf66` | yes | no — disabled by default (`SETTLEMENT_USDCX_ENABLED`) | no |
+| USDM, Cardano mainnet | production target | no | no |
+| USDCx, Cardano mainnet | production target | no | no |
+
+- **tADA** is the preprod network's own asset, from the official testnet faucet. Not a stablecoin: it proves
+  the settlement path, not the peg.
+- The **preprod asset named USDCx** is registered in the Cardano Foundation preprod token metadata registry
+  with 6 decimals. We have not identified issuer documentation confirming it as official Circle USDCx, so it
+  is treated as a test asset and is disabled by default.
+- **USDM** — Moneta publishes a mainnet policy id. We have not identified an issuer-confirmed USDM deployment
+  on Cardano preprod.
+- **USDCx on mainnet** — published mainnet policy id.
+
+USDM and USDCx are production settlement targets **at the same level of support**. They differ only in how the
+reserve would be sourced, not in how the gateway settles them: the registry treats them identically, and
+neither has been exercised. Nothing in this repository ranks one above the other.
 
 What the preprod tADA settlement proves: coin selection, transaction construction, signing, submission,
 confirmation, the withdrawal state transition, and the credits reconciliation that follows. What it does not
 prove: that USDM or USDCx payouts have been validated. None have been made by this deployment.
 
-"USDCx" appears in three different places in this repository, with three different states. They are not
-interchangeable:
+"USDCx" refers to four different things across this repository. They are not interchangeable:
 
 | Reference | State here |
 |---|---|
-| USDCx preprod **deposit route** | implemented and **enabled**, but **not exercised** — no deposit has been credited through it on this deployment |
-| USDCx preprod **settlement asset** | **disabled by default** (`SETTLEMENT_USDCX_ENABLED`); a preprod registry entry, not issuer-confirmed |
-| USDCx on **Cardano mainnet** | **informational only** — a production settlement target, neither deployed nor exercised here |
+| USDCx preprod **deposit route** | implemented and **enabled**, but **not exercised** — no deposit has been credited through it |
+| USDCx preprod **settlement asset** | **registered, disabled by default** (`SETTLEMENT_USDCX_ENABLED`); a preprod registry entry, not issuer-confirmed |
+| USDCx on **Cardano mainnet** | a **registered production target** — not enabled, not exercised here |
+| USDCx reached via **Circle xReserve** | a **candidate production reserve-funding route** identified by research — not integrated, not exercised, no relationship with the provider |
 
 ## Liquidity and rebalancing
 
@@ -199,8 +219,11 @@ external stablecoin liquidity into Cardano settlement liquidity happens outside 
 defines the interface, records what happened, and verifies the result against the chain.
 
 **Today:** reserve tracking read from the chain, rebalance records, and manual treasury operations.
-**Pilot work:** selecting, declaring and integrating the production liquidity and conversion route. No
-provider is named here, because none has been integrated.
+**Pilot work:** selecting and contracting the treasury route, completing any issuer onboarding, and automating
+what can be automated — reserve-triggered rebalance records, on-chain verification of the resulting mint
+transaction, swap quote and slippage pre-checks with policy-bounded signing, and reverse-leg monitoring. No
+provider is selected. Candidate routes are listed below precisely so that "unidentified" is not the answer,
+and identification is stated separately from integration.
 
 - **Trigger** — the free reserve for a settlement asset falls below its minimum, or a planned withdrawal would
   take it there.
@@ -212,6 +235,36 @@ provider is named here, because none has been integrated.
 - **Status** — `planned` → `processing` → `completed` / `failed`.
 - **Completion rule** — settlement capacity comes from the vault's on-chain balance, read independently of any
   rebalance record. Marking a rebalance completed does not by itself allow a payout.
+
+### Production settlement route — candidate, not integrated
+
+Reaching Cardano settlement liquidity is a three-leg process, and no single provider performs all of it.
+**None of the routes below is integrated. No account, agreement, onboarding or API access exists with any
+party named, and none has been contacted — these are candidate routes identified by desk research.**
+
+1. **Normalisation — treasury, manual.** External stablecoin liquidity (USDC, USDT, or USDC on another chain)
+   is converted to USDC on a chain the Cardano entry route accepts. Performed by an operator through an
+   exchange or an issuer fiat account; no exchange API is integrated and none is claimed.
+2. **Cardano entry — third-party issuer infrastructure.** USDC is deposited into Circle's xReserve contract
+   and USDCx is minted to a WFIT-controlled Cardano address. Attestation is performed by Circle and by the
+   Cardano-side network operator. **WFIT would be a user of this publicly available route, not an operator of
+   it, and holds no partner or API access to it.** The operator documents a reverse path from Cardano back to
+   USDC; we have not exercised it.
+3. **Settlement asset.** Where USDM is required, it is sourced either by an on-chain swap from USDCx on a
+   Cardano DEX, or by direct issuance from the USDM issuer — Moneta, which states that it mints and redeems in
+   licensed US states, or NBX, which states that it is the EEA co-issuer under MiCA. Which applies depends on
+   the treasury entity's jurisdiction and banking access. That is an open pilot decision.
+
+Regulatory descriptions above are the providers' own statements about themselves. We report them; we do not
+certify them.
+
+Of these, the Cardano entry route has the fewest onboarding preconditions: wallets, rather than a banking
+relationship or issuer onboarding. That is an observation about preconditions, not a selection, and it does
+not make either settlement asset primary.
+
+**Sizing constraint.** Cardano stablecoin liquidity is finite, and stable-pair pool depth is a small fraction
+of network supply. Settlement sizing and reserve thresholds are set against depth observed at the time of
+operation, not against theoretical capacity. Figures are deliberately not quoted here, because they date.
 
 Reserve thresholds are configured per settlement asset, in that asset's base units:
 
