@@ -7,3 +7,8 @@ dist/
 *.key
 *.skey
 logs/
+*.pem
+*.seed
+*.jar
+*.cookie
+.DS_Store

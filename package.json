@@ -1,6 +1,12 @@
 {
   "name": "wfit-stablecoin-gateway",
   "version": "0.1.0",
+  "description": "MIT-licensed WFIT stablecoin gateway reference implementation with Cardano preprod settlement.",
+  "author": "arikbd123",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arikbd123/wfit-gateway-prepod.git"
+  },
   "private": false,
   "license": "MIT",
   "type": "module",
