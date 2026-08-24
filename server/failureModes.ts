@@ -31,3 +31,47 @@ export const WITHDRAWAL_OUTCOMES: Outcome[] = [
   { situation: "Settlement confirmed on chain", result: "confirmed, transaction hash stored", credits: "locked credits consumed" },
   { situation: "Refund attempted twice", result: "the second call is a no-op", credits: "released once only" },
 ];
+
+// The lifecycle states, as transitions rather than situations. The outcome
+// tables above answer "what happens if X"; these answer "where can this record
+// go next", which is the question a reviewer asks when reading a status field.
+
+export interface LifecycleState {
+  state: string;
+  meaning: string;
+  next: string;
+}
+
+export const DEPOSIT_LIFECYCLE: LifecycleState[] = [
+  { state: "pending", meaning: "submitted to the gateway, nothing seen on chain yet (or awaiting admin review on the exchange route)", next: "confirming · rejected · failed" },
+  { state: "confirming", meaning: "the transaction was found and pays the deposit address; waiting for the route's confirmation target", next: "confirmed · rejected" },
+  { state: "confirmed", meaning: "validated at or above the confirmation target, from the amount observed on chain", next: "credited" },
+  { state: "credited", meaning: "credits issued once, from the observed amount — terminal, happy path", next: "— (terminal)" },
+  { state: "rejected", meaning: "refused by validation or by an admin, with the reason stored", next: "— (terminal, 0 credits)" },
+  { state: "failed", meaning: "validation could not complete", next: "— (terminal, 0 credits)" },
+];
+
+export const WITHDRAWAL_LIFECYCLE: LifecycleState[] = [
+  { state: "pending", meaning: "requested and quoted; credits locked, settlement not yet started", next: "processing · failed" },
+  { state: "processing", meaning: "building, balancing and signing the Cardano settlement transaction", next: "submitted · failed" },
+  { state: "submitted", meaning: "broadcast to the network, waiting for confirmations", next: "confirmed · manual_review" },
+  { state: "confirmed", meaning: "seen on chain; the locked credits are consumed — terminal, happy path", next: "— (terminal)" },
+  { state: "failed", meaning: "failed before broadcast, provably nothing sent", next: "refunded" },
+  { state: "refunded", meaning: "the locked credits were released back to available", next: "— (terminal)" },
+  { state: "manual_review", meaning: "the submit outcome could not be proven; the transaction may still confirm", next: "— (held; credits stay locked, never auto-refunded)" },
+];
+
+// What "refund" means on each side, because they are not symmetrical and a
+// reviewer should not have to infer it from the absence of a code path.
+export const REFUND_POLICY = {
+  credits:
+    "A refund releases locked credits back to the account's available balance. It happens only where the " +
+    "settlement transaction was provably never broadcast, and it is idempotent — a second refund call is a no-op.",
+  deposits:
+    "The gateway does not refund deposits, and no code path exists to do so. A rejected deposit issues zero " +
+    "credits and the funds remain at the deposit address under operator control; returning them to the sender " +
+    "is an off-system treasury action, not a gateway function.",
+  unproven:
+    "A withdrawal whose submit outcome cannot be proven is never auto-refunded. Its credits stay locked and it " +
+    "is held in manual_review, because refunding a transaction that later confirms would pay twice.",
+};

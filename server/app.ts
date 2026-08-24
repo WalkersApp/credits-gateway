@@ -4,8 +4,11 @@ import cookieParser from "cookie-parser";
 import express, { type NextFunction, type Request, type Response } from "express";
 
 import { config } from "./config.js";
-import { CONVERSION } from "./conversion.js";
-import { DEPOSIT_OUTCOMES, WITHDRAWAL_OUTCOMES } from "./failureModes.js";
+import { CONVERSION, CONVERSION_EXAMPLE, SETTLEMENT_DIRECTION } from "./conversion.js";
+import { CUSTODY_SUMMARY, custodyChain } from "./custody.js";
+import {
+  DEPOSIT_LIFECYCLE, DEPOSIT_OUTCOMES, REFUND_POLICY, WITHDRAWAL_LIFECYCLE, WITHDRAWAL_OUTCOMES,
+} from "./failureModes.js";
 import {
   COOKIE_NAME, authenticate, authenticateAdmin, issueToken, loadSession, registerUser,
   requireAdmin, requireUser, setSessionCookie,
@@ -58,8 +61,14 @@ export function createApp() {
       settlementAssets: SETTLEMENT_ASSETS.map((a) => ({ ...a, rateBps: SETTLEMENT_RATE_BPS[a.id] ?? 10_000 })),
       settlementTargets: SETTLEMENT_TARGETS,
       conversion: CONVERSION,
+      conversionExample: CONVERSION_EXAMPLE,
+      settlementDirection: SETTLEMENT_DIRECTION,
+      custody: { summary: CUSTODY_SUMMARY, chain: custodyChain() },
       depositOutcomes: DEPOSIT_OUTCOMES,
       withdrawalOutcomes: WITHDRAWAL_OUTCOMES,
+      depositLifecycle: DEPOSIT_LIFECYCLE,
+      withdrawalLifecycle: WITHDRAWAL_LIFECYCLE,
+      refundPolicy: REFUND_POLICY,
       exchanges: config.cexDeposits.exchanges,
       fees: {
         withdrawalFlatUnits: config.fees.withdrawalFlatUnits,
@@ -211,6 +220,10 @@ export function createApp() {
       reserve,
       depositOutcomes: DEPOSIT_OUTCOMES,
       withdrawalOutcomes: WITHDRAWAL_OUTCOMES,
+      depositLifecycle: DEPOSIT_LIFECYCLE,
+      withdrawalLifecycle: WITHDRAWAL_LIFECYCLE,
+      refundPolicy: REFUND_POLICY,
+      settlementDirection: SETTLEMENT_DIRECTION,
     });
   }));
 

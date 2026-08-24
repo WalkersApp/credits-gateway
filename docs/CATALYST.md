@@ -47,6 +47,53 @@ Exercised end to end on the preprod deployment, with transaction hashes in the R
 The settlement asset exercised is **tADA**, the preprod network's own asset. It evidences the settlement
 mechanism, not stablecoin peg behaviour and not issuer integration.
 
+## 3a. What a reviewer can test on preprod
+
+The deployment is open at <https://wfit-gateway.anchorflow.cloud> — register, no invitation needed. It is
+Cardano preprod throughout, so nothing involves real value.
+
+1. Get preprod tADA from the [Cardano testnet faucet](https://docs.cardano.org/cardano-testnets/tools/faucet).
+2. Send it to the gateway deposit address `addr_test1vrldq43s4xqjnak2s04dg08v2w04cj62llxnqne683rsrpqjzdk6l`
+   and paste the transaction hash into **Fund credits**. Type a wrong amount deliberately: the gateway credits
+   what it observed on chain, not what was typed.
+3. Watch the deposit move `pending → confirming → credited`, then resubmit the same hash — the original record
+   comes back and a duplicate counter increments.
+4. Request a withdrawal to your own preprod address. The quote is computed server-side; a rate sent by the
+   browser is ignored.
+5. Check the resulting transaction hash in a public Cardano preprod explorer, and check the balance dropped by
+   exactly the credits used.
+6. Exercise the failure paths: a hash paying a different address, an amount below the route minimum, a
+   withdrawal above the balance, a malformed destination. Each is refused with a reason, without moving credits.
+7. Read `/architecture` and `/evidence` — both render from this deployment's own configuration and records.
+
+**Proven, and checkable by a reviewer without our cooperation:** on-chain deposit validation, credit issuance
+from the observed amount, duplicate prevention, reserve checks, the Cardano settlement transaction, and the
+credits reconciliation that follows it. Every hash resolves in a public explorer.
+
+**Not proven, and not testable here because it does not exist:** a USDM or USDCx payout, an automated
+conversion route, and an exchange API.
+
+## 3b. Deposit routes in, Cardano settlement out
+
+Deposits and withdrawals are not symmetrical.
+
+- **Deposit routes are inbound only** — Cardano preprod, Ethereum Sepolia, and exchange withdrawals booked in
+  by an admin.
+- **Settlement destinations are Cardano only.** The production settlement assets are **USDM and USDCx on
+  Cardano**; this preprod deployment settles tADA.
+
+A source chain being supported for deposits never makes it a withdrawal destination. There is no payout path
+in this gateway to Ethereum, to an exchange, or to any non-Cardano asset — none is implemented, none is
+configured, and none is planned.
+
+```
+Ethereum Sepolia · Cardano preprod · exchange withdrawal
+  ↓  deposit — inbound only
+WFIT credits ledger
+  ↓  withdrawal — Cardano only
+USDM / USDCx on Cardano in production   (tADA on this preprod deployment)
+```
+
 ## 4. Settlement assets — registered, enabled, exercised
 
 These are three independent states, and conflating them is how stablecoin support gets overstated.
@@ -109,15 +156,165 @@ contracting them is pilot work.
 of network supply. Settlement sizing and reserve thresholds are set against depth observed at the time of
 operation, not against theoretical capacity.
 
+## 5a. Conversion mechanism, worked through
+
+The abstract description invites the wrong reading — that each deposit is converted individually and
+immediately. It is not.
+
+**100 USDC deposited, 50 credits later redeemed:**
+
+1. A user sends 100 USDC on a supported deposit route and submits the transaction hash.
+2. The gateway reads the source chain and validates what actually arrived — 100 USDC, not a declared amount.
+3. **100 credits are issued**, minus any configured deposit fee (currently none). The deposited USDC stays
+   where it landed; **nothing is converted at this moment**.
+4. The treasury monitors the Cardano settlement reserve against its per-asset thresholds. Conversion into the
+   Cardano settlement asset happens **when a threshold is crossed** — in batches, on the treasury's schedule,
+   **not once per deposit**.
+5. The user requests a withdrawal of 50 credits. The fee is 0.25 flat + 0.50% = 0.5 credits, leaving 49.5.
+6. The gateway checks the free reserve covers 49.5, locks 50 credits, then builds, signs and submits a Cardano
+   transaction paying 49.5 of the settlement asset to the user's Cardano address.
+7. On confirmation the locked credits are consumed. In production the payout asset is **USDM or USDCx** from
+   the settlement reserve; on this preprod deployment it is tADA.
+
+**No deposit is converted one-for-one at deposit time, and no conversion is triggered by an individual
+deposit.** Credits are an accounting claim issued on validation; the reserve that settles them is managed
+separately against thresholds. Conflating the two would describe a bridge, which this is not.
+
+The same sequence ran for real on this deployment with tADA in place of USDC: 120 in, 120 credits, 50
+redeemed, 49.5 settled — hashes in the README and on `/evidence`.
+
+## 5b. Custody chain
+
+```
+User wallet                     the user's own funds        user-controlled
+  ↓  deposit
+Deposit address                 one per source chain        WFIT — custodial
+  ↓  validated, credits issued
+Credits ledger                  no funds, an accounting claim on the gateway
+  ↓  redemption requested
+Treasury / rebalancing layer    external liquidity in transit
+                                WFIT treasury operator, outside this system — custodial
+  ↓  reserve topped up
+Cardano settlement vault        tADA here, USDM / USDCx in production
+                                WFIT, single signing key — custodial hot wallet
+  ↓  settlement transaction confirmed
+User Cardano wallet             the settled payout          user-controlled
+```
+
+| Stage | Controlled by | Model |
+|---|---|---|
+| User wallet, before deposit | the user | user-controlled |
+| Deposit address, one per source chain | WFIT | custodial |
+| Credits ledger | the gateway database, append-only | accounting only — holds no funds |
+| Treasury / rebalancing layer | the WFIT treasury operator, outside this system | custodial |
+| Cardano settlement vault | WFIT, single signing key | custodial hot wallet |
+| User Cardano wallet, after settlement | the user | user-controlled |
+
+**Status: custodial.** Between the deposit landing and the settlement transaction confirming, WFIT holds the
+funds. The gateway is not, and is not described as, non-custodial.
+
+- **Preprod vault address:** `addr_test1vz3scr56jxyl7qez7c8m8z75r73vuhhs0kjl8tjp06yqvjga9h60a` — public and
+  checkable, holding no mainnet value. It is a custodial hot wallet: no smart-contract vault, no
+  multi-signature scheme.
+- The signing key is held server-side outside the repository, mode 600, read once by the gateway process. It
+  is never logged, never returned by an API and never reaches the browser.
+- **Production vaults and their key policy are to be declared before mainnet pilot deployment**, including
+  whether the custodial hot wallet is replaced.
+
+## 5c. Liquidity and rebalancing — operational rules
+
+| | Today, on this deployment | Pilot |
+|---|---|---|
+| Reserve monitoring | on-chain balance read per settlement asset, free = balance − committed | unchanged, plus alerting |
+| Thresholds | configured per asset in base units: critical / minimum / target | unchanged, sized against observed pool depth |
+| Rebalance trigger | an operator reads the reserve state and decides | reserve-triggered rebalance records raised automatically |
+| Conversion itself | **a manual treasury action, entirely outside this system** | provider-integrated, with quote and slippage pre-checks and policy-bounded signing |
+| Recording | an admin books the rebalance and what actually arrived | written automatically from the provider response |
+| Verification | the vault's on-chain balance, read independently of the record | plus on-chain verification of the mint transaction, and reverse-leg monitoring |
+
+No automated job in this deployment creates, triggers or completes a rebalance. Percentages, provider names
+and pool sizes are deliberately not quoted: none has been selected, and any figure would date.
+
+Threshold semantics, per settlement asset, where free = on-chain balance − committed to unsettled withdrawals:
+`free ≥ target` healthy · `minimum ≤ free < target` monitor · `critical ≤ free < minimum` rebalance required ·
+`free < critical` critical · `free < the requested settlement` that settlement is blocked before any credits
+are locked.
+
+## 5d. Failure and refund state machine
+
+Happy path, end to end:
+
+```
+Deposit submitted            pending
+  ↓ seen on chain
+Waiting for confirmations    confirming
+  ↓ confirmation target met
+Validated                    confirmed
+  ↓ credits issued once, from the observed amount
+Credits in the ledger        credited
+  ↓ withdrawal requested, credits locked
+Withdrawal requested         pending → processing
+  ↓ built, signed, broadcast
+On the network               submitted
+  ↓ seen on chain, locked credits consumed
+Settled                      confirmed
+```
+
+| Deposit state | Meaning | Can move to |
+|---|---|---|
+| `pending` | submitted, nothing seen on chain yet (or awaiting admin review on the exchange route) | `confirming` · `rejected` · `failed` |
+| `confirming` | found and paying the deposit address; waiting for the confirmation target | `confirmed` · `rejected` |
+| `confirmed` | validated at or above the target, from the observed amount | `credited` |
+| `credited` | credits issued once — terminal, happy path | — |
+| `rejected` | refused by validation or by an admin, reason stored | — terminal, 0 credits |
+| `failed` | validation could not complete | — terminal, 0 credits |
+
+| Withdrawal state | Meaning | Can move to |
+|---|---|---|
+| `pending` | requested and quoted; credits locked, settlement not started | `processing` · `failed` |
+| `processing` | building, balancing and signing the Cardano transaction | `submitted` · `failed` |
+| `submitted` | broadcast, waiting for confirmations | `confirmed` · `manual_review` |
+| `confirmed` | on chain; locked credits consumed — terminal, happy path | — |
+| `failed` | failed before broadcast, provably nothing sent | `refunded` |
+| `refunded` | locked credits released back to available | — terminal |
+| `manual_review` | submit outcome unproven; the transaction may still confirm | — held, credits stay locked |
+
+**Failure cases and what happens to the money:**
+
+| Case | Where it is caught | Result |
+|---|---|---|
+| Unsupported or unrecognised asset | deposit validation | rejected, 0 credits |
+| Missing confirmations | deposit validation | held at `confirming`, 0 credits until the target is met |
+| Duplicate deposit | unique index on `(network, txHash)` | original record returned, issued once |
+| Insufficient liquidity | reserve check at request time | refused before any credits are locked |
+| Failed Cardano transaction | build / sign / first submit | `failed`, nothing broadcast, credits released |
+| Unprovable Cardano submit | post-submit | `manual_review`, credits stay locked |
+
+**Refund behaviour:**
+
+- **Credits** — a refund releases locked credits back to available. It happens only where the settlement
+  transaction was provably never broadcast, and it is idempotent: a second refund call is a no-op.
+- **Deposits** — **the gateway does not refund deposits, and no code path exists to do so.** A rejected
+  deposit issues zero credits and the funds remain at the deposit address under operator control. Returning
+  them to the sender is an off-system treasury action, not a gateway function.
+- **Unproven settlements** — never auto-refunded. Refunding a transaction that later confirms would pay twice.
+
+The rule underneath all of it: everything that can fail happens *before* broadcast, so those cases release
+credits safely. A rejection on a *resubmit* proves nothing — if our transaction was applied, its inputs are
+already spent and the node rejects the duplicate.
+
 ## 6. Gap responses
 
-| Gap raised | Response |
-|---|---|
-| Interoperability providers not identified | Identified as candidate routes in §5, with integration status stated separately from identification. |
-| Conversion mechanism not identified | A three-leg process, described in §5. The gateway does not execute conversion; it records the operation and verifies the result against the chain. |
-| Custody model not identified | Source-chain deposits at WFIT-controlled addresses per chain; credits are database accounting only; the Cardano reserve is a **custodial hot wallet** — no smart-contract vault, no multi-signature. Stated as such, not described as non-custodial. |
-| Liquidity / rebalancing process not identified | Reserve thresholds per settlement asset, committed-versus-free accounting, and a rebalance record capturing source network, source asset and amount, provider, destination asset, expected amount, actual amount, external reference, status and timestamps. Settlement capacity comes from the vault's on-chain balance, read independently of any rebalance record. |
-| Failure / refund logic not identified | Full deposit and withdrawal outcome tables in the README and on `/architecture`; pre-broadcast failures release credits, unproven submits hold them. |
+| Gap raised | Response | Where |
+|---|---|---|
+| Preprod demonstration unclear | A step-by-step walkthrough a reviewer can run themselves, and an end-to-end trace on `/evidence` chaining one deposit to one settlement transaction. | §3a, `/evidence` §2–3 |
+| Interoperability providers not identified | Identified as candidate routes, with integration status stated separately from identification. None is integrated or contacted. | §5 |
+| Conversion mechanism not identified | A three-leg process, plus a worked numeric example showing that credits are issued on validation while the reserve is topped up separately on thresholds — not per deposit, not instantly. | §5, §5a |
+| Withdrawal destinations unclear | Settlement withdrawals leave on Cardano only, in USDM/USDCx in production and tADA here. External chains and assets are deposit routes only; no payout path to them exists. | §3b |
+| Custody model not identified | A per-hop custody chain: user wallet → deposit address → credits ledger → treasury → Cardano vault → user wallet, each row naming who controls it. Custodial throughout the middle; the Cardano reserve is a **custodial hot wallet** — no smart-contract vault, no multi-signature. Stated as such, not described as non-custodial. Production vaults to be declared before mainnet. | §5b |
+| Liquidity / rebalancing process not identified | Reserve thresholds per settlement asset, committed-versus-free accounting, a today-versus-pilot rule table, and a rebalance record capturing source network, source asset and amount, provider, destination asset, expected amount, actual amount, external reference, status and timestamps. Settlement capacity comes from the vault's on-chain balance, read independently of any rebalance record. | §5c |
+| Failure / refund logic not identified | A state machine for both deposits and withdrawals with the transitions out of every state, the named failure cases, and what happens to the money in each. Pre-broadcast failures release credits; unproven submits hold them; deposits are never refunded by the gateway and no code path exists to do so. | §5d |
+| TRL justification | TRL 5, with the specific integrated components validated in a relevant environment listed and each one checkable against the live deployment. | §7 |
 
 ## 7. Technology readiness
 
@@ -127,6 +324,21 @@ handling and real Cardano preprod settlement, exercised end to end.
 
 The pilot extends this into production USDM/USDCx settlement liquidity, a contracted production conversion
 route, and the broader WFIT ecosystem.
+
+**Why not lower.** TRL 4 would mean components validated in a laboratory — mocks, simulated chains, unit tests
+alone. That is not what this is. The components are integrated with each other and run against a real Cardano
+network with real transaction construction, signing, submission and confirmation. The deposit that funded the
+credits and the transaction that settled them both exist on preprod and resolve in a public explorer.
+
+**Why not higher.** TRL 6 would mean the system demonstrated in an operational environment. It is not: there
+is no mainnet deployment, no production settlement asset has been paid out, the conversion route is a manual
+treasury process with no provider contracted, the exchange route has no API, and no third-party security audit
+has been performed. Claiming TRL 6 would require exactly the work this pilot proposes to do.
+
+**What "relevant environment" means here.** Cardano preprod is the same protocol, the same transaction format,
+the same signing scheme and the same indexer APIs as mainnet, differing in the value at stake and the assets
+available. That makes it the right environment to validate a settlement engine, and the wrong environment to
+validate a stablecoin peg or an issuer relationship — which is why neither is claimed.
 
 ## 8. What remains open
 

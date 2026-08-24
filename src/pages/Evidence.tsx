@@ -19,6 +19,16 @@ export function Evidence({ config }: { config: GatewayConfig }) {
   const txLink = (hash: string | null, url: string | null) =>
     hash ? <a href={url ?? `${config.explorerBase}/transaction/${hash}`} target="_blank" rel="noreferrer">{shortHash(hash)}</a> : "—";
 
+  // The reviewer question is "does one deposit trace to one settlement", so pair
+  // a credited deposit with a settled withdrawal on the same account rather than
+  // asking them to join the tables below by eye.
+  const settled = data.settledWithdrawals.find((w) =>
+    data.creditedDeposits.some((d) => d.account === w.account && d.txHash),
+  );
+  const trace = settled
+    ? { withdrawal: settled, deposit: data.creditedDeposits.find((d) => d.account === settled.account && d.txHash)! }
+    : null;
+
   return (
     <>
       <h1>TRL 5 evidence</h1>
@@ -50,7 +60,84 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </dl>
       </div>
 
-      <h2>2 · Deposits that issued credits</h2>
+      <h2>2 · End to end, as one chain</h2>
+      <div className="card">
+        {trace ? (
+          <>
+            <div className="diagram">
+              <div className="node">
+                Deposit of {fmt(trace.deposit.observedUnits ?? 0)} {trace.deposit.asset} observed on{" "}
+                {trace.deposit.network} — {txLink(trace.deposit.txHash, trace.deposit.explorerUrl)}
+              </div>
+              <div className="down">↓ validated at {trace.deposit.confirmations}/{trace.deposit.confirmationsRequired} confirmations</div>
+              <div className="node accent">{fmt(trace.deposit.creditsUnits ?? 0)} credits issued to {trace.deposit.account}</div>
+              <div className="down">↓ {fmt(trace.withdrawal.creditsUnits)} credits redeemed, {fmt(trace.withdrawal.feeUnits)} fee</div>
+              <div className="node">Withdrawal locked and settled to {shortHash(trace.withdrawal.destinationAddress)}</div>
+              <div className="down">↓ confirmed on chain, locked credits consumed</div>
+              <div className="node accent">
+                {fmt(trace.withdrawal.settlementUnits)} {trace.withdrawal.settlementAssetId} settled —{" "}
+                {txLink(trace.withdrawal.txHash, trace.withdrawal.explorerUrl)}
+              </div>
+            </div>
+            <p className="sub">
+              One account, one deposit, one settlement. Both hashes resolve in a public Cardano {network}{" "}
+              explorer without access to this deployment. The settlement asset here is tADA: this evidences the
+              settlement mechanism, not a USDM or USDCx payout and not peg behaviour.
+            </p>
+          </>
+        ) : (
+          <p className="sub" style={{ marginTop: 0 }}>
+            No single account on this deployment currently has both a credited deposit and a settled withdrawal
+            to chain together. The individual records are in the tables below.
+          </p>
+        )}
+      </div>
+
+      <h2>3 · What you can test on this deployment</h2>
+      <div className="card">
+        <ol>
+          <li className="sub">
+            Open <a href={env.gatewayUrl} target="_blank" rel="noreferrer">{env.gatewayUrl}</a> and register an
+            account. No invitation is needed and no real value is involved — this is Cardano {network}.
+          </li>
+          <li className="sub">
+            Get preprod tADA from the{" "}
+            <a href="https://docs.cardano.org/cardano-testnets/tools/faucet" target="_blank" rel="noreferrer">
+              Cardano testnet faucet
+            </a>{" "}
+            into your own preprod wallet.
+          </li>
+          <li className="sub">
+            Send some of it to the gateway deposit address <span className="mono break">{env.cardanoDepositAddress ?? "not configured"}</span>,
+            then paste the transaction hash into <strong>Fund credits</strong>. Deliberately type a wrong amount:
+            the gateway credits what it observed on chain, not what you typed.
+          </li>
+          <li className="sub">
+            Watch the deposit move <code>pending → confirming → credited</code>. Submit the same hash a second
+            time — you get the original record back and the duplicate counter increments, not a second issuance.
+          </li>
+          <li className="sub">
+            Request a withdrawal to your own preprod address on <strong>Withdraw</strong>. The quote — credits
+            used, fee, amount received — is computed server-side; a rate sent by the browser is ignored.
+          </li>
+          <li className="sub">
+            Take the resulting transaction hash to a public Cardano {network} explorer and confirm the payout
+            landed at your address, then check that your credit balance dropped by exactly the credits used.
+          </li>
+          <li className="sub">
+            Try the failure paths: a hash that pays a different address, an amount below the route minimum, a
+            withdrawal larger than your balance, or a malformed destination. Each is refused with a reason and
+            without moving credits.
+          </li>
+        </ol>
+        <p className="sub">
+          <strong>What you cannot test here, because it does not exist yet:</strong> a USDM or USDCx payout, an
+          automated conversion route, or an exchange API. Those are pilot work and no page in this deployment
+          presents them as done.
+        </p>
+      </div>
+
+      <h2>4 · Deposits that issued credits</h2>
       <div className="card scroll">
         <table>
           <thead>
@@ -73,7 +160,7 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </table>
       </div>
 
-      <h2>3 · Duplicate protection</h2>
+      <h2>5 · Duplicate protection</h2>
       <div className="card scroll">
         <table>
           <thead><tr><th>Original transaction</th><th>Route</th><th>Duplicate submissions</th><th>Credits issued</th></tr></thead>
@@ -95,7 +182,7 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </p>
       </div>
 
-      <h2>4 · Rejected deposits</h2>
+      <h2>6 · Rejected deposits</h2>
       <div className="card scroll">
         <table>
           <thead><tr><th>Route</th><th>Transaction</th><th>Status</th><th>Reason</th><th>Credits issued</th></tr></thead>
@@ -114,7 +201,7 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </table>
       </div>
 
-      <h2>5 · Settled withdrawals</h2>
+      <h2>7 · Settled withdrawals</h2>
       <div className="card scroll">
         <table>
           <thead>
@@ -141,7 +228,7 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </p>
       </div>
 
-      <h2>6 · Reserve safety</h2>
+      <h2>8 · Reserve safety</h2>
       <div className="card scroll">
         <table>
           <thead><tr><th>Asset</th><th>On chain</th><th>Committed</th><th>Free</th><th>Critical</th><th>Minimum</th><th>Target</th><th>State</th></tr></thead>
@@ -167,7 +254,7 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </p>
       </div>
 
-      <h2>7 · Accounting integrity</h2>
+      <h2>9 · Accounting integrity</h2>
       <div className="card">
         <dl className="kv">
           <dt>Ledger supply</dt><dd>{fmt(data.integrity.ledgerSupplyUnits)} credits</dd>
@@ -186,7 +273,7 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </p>
       </div>
 
-      <h2>8 · Withdrawals held or returned</h2>
+      <h2>10 · Withdrawals held or returned</h2>
       <div className="card scroll">
         <table>
           <thead><tr><th>Status</th><th>Credits</th><th>Transaction</th><th>Reason</th></tr></thead>
@@ -206,7 +293,37 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </table>
       </div>
 
-      <h2>9 · Failure behaviour</h2>
+      <h2>11 · Lifecycle and refunds</h2>
+      <div className="card scroll">
+        <table>
+          <thead><tr><th>Deposit state</th><th>Meaning</th><th>Can move to</th></tr></thead>
+          <tbody>
+            {data.depositLifecycle.map((l) => (
+              <tr key={l.state}><td><StatusPill status={l.state} /></td><td className="sub">{l.meaning}</td><td className="sub">{l.next}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card scroll">
+        <table>
+          <thead><tr><th>Withdrawal state</th><th>Meaning</th><th>Can move to</th></tr></thead>
+          <tbody>
+            {data.withdrawalLifecycle.map((l) => (
+              <tr key={l.state}><td><StatusPill status={l.state} /></td><td className="sub">{l.meaning}</td><td className="sub">{l.next}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card">
+        <dl className="kv">
+          <dt>Refunding credits</dt><dd className="sub">{data.refundPolicy.credits}</dd>
+          <dt>Refunding deposits</dt><dd className="sub">{data.refundPolicy.deposits}</dd>
+          <dt>Unproven settlements</dt><dd className="sub">{data.refundPolicy.unproven}</dd>
+          <dt>Withdrawal destinations</dt><dd className="sub">{data.settlementDirection.withdrawalDestinations}</dd>
+        </dl>
+      </div>
+
+      <h2>12 · Failure behaviour</h2>
       <p className="sub">
         The rules the code enforces. Rows without a record above have not occurred on this deployment; they are
         covered by the test suite rather than by a live record, and we do not manufacture records to fill them.
@@ -232,7 +349,7 @@ export function Evidence({ config }: { config: GatewayConfig }) {
         </table>
       </div>
 
-      <h2>10 · What this does and does not establish</h2>
+      <h2>13 · What this does and does not establish</h2>
       <div className="card">
         <ul className="plain">
           <li><strong>Established:</strong> on-chain deposit verification, idempotent credits issuance, accounting

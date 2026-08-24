@@ -8,6 +8,32 @@ export interface Outcome {
   credits: string;
 }
 
+export interface LifecycleState {
+  state: string;
+  meaning: string;
+  next: string;
+}
+
+export interface RefundPolicy {
+  credits: string;
+  deposits: string;
+  unproven: string;
+}
+
+export interface SettlementDirection {
+  depositRoutes: string;
+  withdrawalDestinations: string;
+  rule: string;
+}
+
+export interface CustodyHop {
+  stage: string;
+  holds: string;
+  controlledBy: string;
+  model: "user-controlled" | "custodial" | "third party" | "accounting only";
+  note: string;
+}
+
 export interface GatewayConfig {
   network: string;
   explorerBase: string;
@@ -26,8 +52,27 @@ export interface GatewayConfig {
     statuses: string[];
     completionRule: string;
   };
+  conversionExample: {
+    headline: string;
+    steps: string[];
+    notConverted: string;
+  };
+  settlementDirection: SettlementDirection;
+  custody: {
+    summary: {
+      status: string;
+      statement: string;
+      userControlled: string;
+      wfitControlled: string;
+      productionNote: string;
+    };
+    chain: CustodyHop[];
+  };
   depositOutcomes: Outcome[];
   withdrawalOutcomes: Outcome[];
+  depositLifecycle: LifecycleState[];
+  withdrawalLifecycle: LifecycleState[];
+  refundPolicy: RefundPolicy;
   exchanges: string[];
   fees: {
     withdrawalFlatUnits: number;
@@ -121,6 +166,10 @@ export interface EvidenceResponse {
   };
   depositOutcomes: Outcome[];
   withdrawalOutcomes: Outcome[];
+  depositLifecycle: LifecycleState[];
+  withdrawalLifecycle: LifecycleState[];
+  refundPolicy: RefundPolicy;
+  settlementDirection: SettlementDirection;
   creditedDeposits: Array<Deposit & { account: string; explorerUrl: string | null }>;
   settledWithdrawals: Array<Withdrawal & { account: string; explorerUrl: string | null }>;
   rejectedDeposits: Array<Deposit & { account: string }>;

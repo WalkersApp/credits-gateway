@@ -110,6 +110,20 @@ export function Architecture({ config }: { config: GatewayConfig }) {
         credited through it on this deployment.
       </p>
 
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>These are deposit routes only</h3>
+        <p className="sub" style={{ marginTop: 0 }}>{config.settlementDirection.depositRoutes}</p>
+        <p className="sub"><strong>{config.settlementDirection.withdrawalDestinations}</strong></p>
+        <p className="sub">{config.settlementDirection.rule}</p>
+        <div className="diagram">
+          <div className="node">Ethereum Sepolia · Cardano preprod · exchange withdrawal</div>
+          <div className="down">↓ deposit, inbound only</div>
+          <div className="node accent">WFIT credits ledger</div>
+          <div className="down">↓ withdrawal, Cardano only</div>
+          <div className="node">USDM / USDCx on Cardano in production — tADA on this preprod deployment</div>
+        </div>
+      </div>
+
       <h2>Cardano settlement</h2>
       <div className="card">
         <dl className="kv">
@@ -183,6 +197,49 @@ export function Architecture({ config }: { config: GatewayConfig }) {
       </div>
 
       <h2>Custody</h2>
+      <div className="card">
+        <p className="sub" style={{ marginTop: 0 }}>
+          <strong>{config.custody.summary.statement}</strong>
+        </p>
+        <p className="sub">
+          User-controlled: {config.custody.summary.userControlled}. WFIT-controlled:{" "}
+          {config.custody.summary.wfitControlled}. {config.custody.summary.productionNote}
+        </p>
+      </div>
+      <div className="card scroll">
+        <table>
+          <thead><tr><th>Stage</th><th>What it holds</th><th>Controlled by</th><th>Model</th></tr></thead>
+          <tbody>
+            {config.custody.chain.map((hop) => (
+              <tr key={hop.stage}>
+                <td>{hop.stage}</td>
+                <td className="sub">{hop.holds}</td>
+                <td className="sub break">{hop.controlledBy}</td>
+                <td>
+                  <span className={`pill ${hop.model === "user-controlled" ? "good" : hop.model === "accounting only" ? "wait" : "warn"}`}>
+                    {hop.model}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="sub">
+          Read top to bottom this is the custody chain: user wallet → deposit address → credits ledger →
+          treasury / rebalancing layer → Cardano settlement vault → user Cardano wallet. Everything between the
+          first and last row is custodial.
+        </p>
+      </div>
+      <div className="card">
+        <dl className="kv">
+          {config.custody.chain.map((hop) => (
+            <span key={hop.stage} style={{ display: "contents" }}>
+              <dt>{hop.stage}</dt>
+              <dd className="sub">{hop.note}</dd>
+            </span>
+          ))}
+        </dl>
+      </div>
       <div className="card">
         <dl className="kv">
           <dt>Source-chain deposits</dt>
@@ -282,6 +339,20 @@ export function Architecture({ config }: { config: GatewayConfig }) {
         </dl>
       </div>
 
+      <h2>How a deposit becomes a settled payout</h2>
+      <div className="card">
+        <p className="sub" style={{ marginTop: 0 }}>
+          <strong>Worked example — {config.conversionExample.headline}.</strong> Amounts use this deployment's
+          configured fees.
+        </p>
+        <ol>
+          {config.conversionExample.steps.map((step, i) => <li key={i} className="sub">{step}</li>)}
+        </ol>
+        <p className="sub">
+          <strong>What this does not mean.</strong> {config.conversionExample.notConverted}
+        </p>
+      </div>
+
       <h2>Fees</h2>
       <div className="card scroll">
         <table>
@@ -323,6 +394,71 @@ export function Architecture({ config }: { config: GatewayConfig }) {
           rate and fee is computed server-side; a rate sent by a browser is ignored. Before confirming, the user
           is shown the credits used, the rate, the gateway fee and the amount they will receive.
         </p>
+      </div>
+
+      <h2>Lifecycle states</h2>
+      <p className="sub">
+        The happy path end to end: a deposit goes <code>pending → confirming → confirmed → credited</code>, and
+        the withdrawal it funds goes <code>pending → processing → submitted → confirmed</code>. Every other state
+        below is a branch off that path, and each row says where a record can go next.
+      </p>
+      <div className="card">
+        <div className="diagram">
+          <div className="node">Deposit submitted — <strong>pending</strong></div>
+          <div className="down">↓ seen on chain</div>
+          <div className="node">Waiting for confirmations — <strong>confirming</strong></div>
+          <div className="down">↓ confirmation target met</div>
+          <div className="node">Validated — <strong>confirmed</strong></div>
+          <div className="down">↓ credits issued once, from the observed amount</div>
+          <div className="node accent">Credits in the ledger — <strong>credited</strong></div>
+          <div className="down">↓ user requests a withdrawal, credits locked</div>
+          <div className="node">Withdrawal requested — <strong>pending → processing</strong></div>
+          <div className="down">↓ built, signed, broadcast</div>
+          <div className="node">On the network — <strong>submitted</strong></div>
+          <div className="down">↓ seen on chain, locked credits consumed</div>
+          <div className="node accent">Settled — <strong>confirmed</strong></div>
+        </div>
+        <p className="sub">
+          Branches off this path: a deposit that fails validation ends <code>rejected</code> or{" "}
+          <code>failed</code> with zero credits; a withdrawal that fails before broadcast ends{" "}
+          <code>failed</code> and then <code>refunded</code>; a withdrawal whose submit outcome cannot be proven
+          is held in <code>manual_review</code> with its credits still locked.
+        </p>
+      </div>
+      <div className="card scroll">
+        <table>
+          <thead><tr><th>Deposit state</th><th>Meaning</th><th>Can move to</th></tr></thead>
+          <tbody>
+            {config.depositLifecycle.map((l) => (
+              <tr key={l.state}>
+                <td><span className="pill">{l.state}</span></td>
+                <td className="sub">{l.meaning}</td>
+                <td className="sub">{l.next}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card scroll">
+        <table>
+          <thead><tr><th>Withdrawal state</th><th>Meaning</th><th>Can move to</th></tr></thead>
+          <tbody>
+            {config.withdrawalLifecycle.map((l) => (
+              <tr key={l.state}>
+                <td><span className="pill">{l.state.replace("_", " ")}</span></td>
+                <td className="sub">{l.meaning}</td>
+                <td className="sub">{l.next}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card">
+        <dl className="kv">
+          <dt>Refunding credits</dt><dd className="sub">{config.refundPolicy.credits}</dd>
+          <dt>Refunding deposits</dt><dd className="sub">{config.refundPolicy.deposits}</dd>
+          <dt>Unproven settlements</dt><dd className="sub">{config.refundPolicy.unproven}</dd>
+        </dl>
       </div>
 
       <h2>Deposit outcomes</h2>
