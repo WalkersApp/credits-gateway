@@ -5,13 +5,18 @@ transaction on Cardano. This repository is the working implementation, deployed 
 preprod**.
 
 ```
-external stablecoin / CEX
-  → validated deposit
-  → WFIT credits
-  → Cardano settlement reserve
-  → USDM / USDCx          (production target)
-  → user-controlled Cardano wallet
+external stablecoin / exchange withdrawal
+  → validated deposit             automatic — the gateway reads the source chain
+  → WFIT credits                  off-chain accounting, issued from the observed amount
+  → settlement liquidity process  operator-run, outside this system, recorded here
+  → Cardano settlement reserve    WFIT-operated vault, balance read back off the chain
+  → settlement asset              tADA on this preprod deployment; USDM / USDCx in production
+  → user withdrawal               settled to a user-controlled Cardano address
 ```
+
+The settlement liquidity step is deliberately not automated. No bridge, no DEX call, no market maker: an
+operator converts external liquidity through an external route and books what happened, and the gateway
+verifies the outcome against the vault's on-chain balance.
 
 Some things this is deliberately not:
 
@@ -28,6 +33,25 @@ separate addresses.
 
 `CARDANO_NETWORK` refuses anything but `preprod`/`preview`, so no configuration mistake can point the signing
 key at mainnet funds.
+
+## Scope
+
+This repository is a **standalone financial infrastructure layer** — deposit validation, credit accounting and
+Cardano settlement. It carries no application logic of its own.
+
+| | |
+|---|---|
+| **WChronicles** | the ecosystem/application — a separate, live product with its own users, database and wallets |
+| **WFIT Stablecoin Gateway** | reusable financial infrastructure — this repository |
+
+- It does **not replace WChronicles**, and it does not change how WChronicles works.
+- It is **not integrated into WChronicles production**. No code, database, wallet, process, port or domain is
+  shared, and nothing here reads or writes WChronicles data.
+- It runs **separately, on Cardano preprod**, in its own folder with its own database, process and signing key.
+- **WChronicles production remains untouched by this repository.**
+
+The gateway is built to be reusable by any application that needs this layer, which is why the credit ledger
+knows nothing about what credits are spent on.
 
 ## Current validation status
 
@@ -53,6 +77,31 @@ of fee, and 49.5 tADA settled on chain. Both explorers resolve the hashes —
 
 **Not exercised here:** USDM or USDCx payouts, an automated conversion route, and an exchange API. See
 [Limitations](#limitations).
+
+## Catalyst pilot scope
+
+**What this pilot demonstrates**
+
+- **Deposit validation** — read from the source chain, credited from the amount that actually arrived.
+- **Credit accounting** — append-only ledger, idempotency keys, and a conservation check that halts settlement
+  on any drift.
+- **Cardano settlement flow** — build, sign, submit, confirm, reconcile, from the gateway's own vault key.
+- **Reserve protection** — per-asset thresholds, committed-versus-free liquidity, and settlements blocked
+  before any credits are locked.
+- **Failure handling** — rejected deposits, duplicate submissions, refunds before broadcast, and unproven
+  submits held for review instead of guessed at.
+- **Operational visibility** — `/architecture` and `/evidence` rendered from this deployment's own
+  configuration and records.
+
+**What this pilot does not demonstrate yet**
+
+- **Production USDM settlement** — no USDM payout has been made by this deployment.
+- **Production USDCx settlement** — no USDCx payout has been made by this deployment.
+- **Automated liquidity conversion** — conversion and rebalancing are operator processes that this gateway
+  records, not performs.
+- **Exchange integrations** — the exchange route is manual and admin-approved. No exchange API is integrated.
+
+Those four are pilot work. Nothing in this repository presents them as done.
 
 ## Architecture
 
@@ -134,11 +183,24 @@ What the preprod tADA settlement proves: coin selection, transaction constructio
 confirmation, the withdrawal state transition, and the credits reconciliation that follows. What it does not
 prove: that USDM or USDCx payouts have been validated. None have been made by this deployment.
 
+"USDCx" appears in three different places in this repository, with three different states. They are not
+interchangeable:
+
+| Reference | State here |
+|---|---|
+| USDCx preprod **deposit route** | implemented and **enabled**, but **not exercised** — no deposit has been credited through it on this deployment |
+| USDCx preprod **settlement asset** | **disabled by default** (`SETTLEMENT_USDCX_ENABLED`); a preprod registry entry, not issuer-confirmed |
+| USDCx on **Cardano mainnet** | **informational only** — a production settlement target, neither deployed nor exercised here |
+
 ## Liquidity and rebalancing
 
 **The gateway does not execute conversions.** No bridge, no DEX integration, no market maker. Conversion of
 external stablecoin liquidity into Cardano settlement liquidity happens outside the system. The gateway
 defines the interface, records what happened, and verifies the result against the chain.
+
+**Today:** reserve tracking read from the chain, rebalance records, and manual treasury operations.
+**Pilot work:** selecting, declaring and integrating the production liquidity and conversion route. No
+provider is named here, because none has been integrated.
 
 - **Trigger** — the free reserve for a settlement asset falls below its minimum, or a planned withdrawal would
   take it there.

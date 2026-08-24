@@ -11,8 +11,8 @@ export function Evidence({ config }: { config: GatewayConfig }) {
     api.evidence().then(setData).catch((err) => setError(err.message));
   }, []);
 
-  if (error) return <><h1>TRL evidence</h1><p className="lede">{error}</p></>;
-  if (!data) return <><h1>TRL evidence</h1><p className="lede">Loading…</p></>;
+  if (error) return <><h1>TRL 5 evidence</h1><p className="lede">{error}</p></>;
+  if (!data) return <><h1>TRL 5 evidence</h1><p className="lede">Loading…</p></>;
 
   const network = config.network.replace("cardano-", "");
   const env = data.environment;
@@ -21,10 +21,16 @@ export function Evidence({ config }: { config: GatewayConfig }) {
 
   return (
     <>
-      <h1>TRL evidence</h1>
+      <h1>TRL 5 evidence</h1>
       <p className="lede">
         Records produced by this deployment, read live from its own database and the chain. Nothing here is an
         illustration — every transaction hash below can be checked independently in a Cardano {network} explorer.
+      </p>
+      <p className="sub">
+        Scope: a standalone gateway deployment on Cardano {network}, with its own database, process and signing
+        key. It is not connected to any production application, and no mainnet funds are reachable from it —
+        the network setting refuses anything but preprod and preview. The settlement asset exercised below is
+        tADA, which evidences the settlement mechanism and not stablecoin peg behaviour.
       </p>
 
       <h2>1 · Environment</h2>
@@ -236,6 +242,10 @@ export function Evidence({ config }: { config: GatewayConfig }) {
             here. The settlement asset exercised is tADA, which proves the settlement mechanism, not peg behaviour.</li>
           <li><strong>Not automated:</strong> the exchange funding route, and the conversion of external stablecoin
             liquidity into Cardano settlement liquidity. Both are operator processes recorded by the gateway.</li>
+          <li><strong>Not integrated:</strong> this is a standalone infrastructure layer. It is not wired into
+            any production application, and it shares no database, wallet or process with one.</li>
+          <li><strong>Independently checkable:</strong> the settlement vault address and every transaction hash
+            above resolve in a public Cardano {network} explorer, without access to this deployment.</li>
         </ul>
       </div>
     </>

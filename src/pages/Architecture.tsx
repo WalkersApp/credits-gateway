@@ -26,11 +26,13 @@ export function Architecture({ config }: { config: GatewayConfig }) {
           <div className="down">↓</div>
           <div className="node accent">WFIT credits (off-chain accounting layer)</div>
           <div className="down">↓</div>
+          <div className="node">Settlement liquidity process — <strong>operator-run, outside this system</strong>, recorded here</div>
+          <div className="down">↓</div>
           <div className="node">Cardano settlement reserve (WFIT-operated custodial vault)</div>
           <div className="down">↓</div>
           <div className="node">Settlement asset — <strong>USDM / USDCx in production</strong>, tADA in this preprod deployment</div>
           <div className="down">↓</div>
-          <div className="node">User-controlled Cardano address</div>
+          <div className="node">User withdrawal to a user-controlled Cardano address</div>
         </div>
         <ul className="plain">
           <li>WFIT is <strong>not</strong> building a new blockchain bridge. Value moves between chains through
@@ -41,10 +43,32 @@ export function Architecture({ config }: { config: GatewayConfig }) {
             from the amount that actually arrived — never from the amount a user typed.</li>
           <li>Source-chain deposit custody and Cardano settlement liquidity are <strong>separate
             responsibilities</strong> with separate addresses and separate accounting.</li>
+          <li>The settlement liquidity step is <strong>not automated</strong>. No bridge, no DEX call, no
+            market maker: an operator converts liquidity through an external route and books it, and the
+            gateway verifies the result against the vault's on-chain balance.</li>
+          <li>This is a <strong>standalone financial infrastructure layer</strong>, reusable by any
+            application that needs it. It is <strong>not integrated into any production application</strong>
+            — separate codebase, database, process, domain and signing key — and it does not read or write
+            another product's data.</li>
           <li>Production settlement targets are <strong>USDM and USDCx on Cardano</strong>.</li>
           <li>This preprod deployment validates the <strong>settlement engine and the accounting and failure
             controls around it</strong>. It is not a finished mainnet gateway, and we do not present it as one.</li>
         </ul>
+      </div>
+
+      <h2>Catalyst pilot scope</h2>
+      <div className="card">
+        <p className="sub" style={{ marginTop: 0 }}>
+          <strong>Demonstrated by this deployment.</strong> Deposit validation against the source chain ·
+          credit accounting with an append-only ledger and a conservation check · the Cardano settlement flow
+          end to end · reserve protection with per-asset thresholds · failure handling including refunds and
+          held-for-review submits · operational visibility through this page and the evidence page.
+        </p>
+        <p className="sub">
+          <strong>Not demonstrated yet.</strong> Production USDM settlement · production USDCx settlement ·
+          automated liquidity conversion or rebalancing · exchange API integration. These are pilot work, and
+          no page in this deployment presents them as done.
+        </p>
       </div>
 
       <h2>Funding routes and who does what</h2>
@@ -140,6 +164,13 @@ export function Architecture({ config }: { config: GatewayConfig }) {
           USDCx payout has been made by this deployment. tADA is the preprod network asset; it demonstrates the
           settlement mechanism, not stablecoin peg behaviour.
         </p>
+        <p className="sub">
+          <strong>Three different USDCx references, three different states.</strong> The preprod USDCx{" "}
+          <em>deposit route</em> is enabled but has not been exercised here. The preprod USDCx{" "}
+          <em>settlement asset</em> is disabled by default — a preprod registry entry, not an issuer-confirmed
+          asset. USDCx on <em>Cardano mainnet</em> is informational only: a production target, neither
+          deployed nor exercised by this deployment.
+        </p>
       </div>
 
       <h2>Custody</h2>
@@ -208,6 +239,11 @@ export function Architecture({ config }: { config: GatewayConfig }) {
           <strong>This gateway does not execute conversions.</strong> It does not run a bridge, a DEX
           integration or a market maker, and it does not claim to. Conversion happens outside the system; the
           gateway defines the interface, records what happened, and verifies the result against the chain.
+        </p>
+        <p className="sub">
+          <strong>Today:</strong> reserve tracking read from the chain, rebalance records, and manual treasury
+          operations. <strong>Pilot work:</strong> selecting, declaring and integrating the production
+          liquidity and conversion route. No provider is named below, because none has been integrated.
         </p>
         <dl className="kv">
           <dt>Trigger</dt>
