@@ -11,7 +11,10 @@ async function main() {
   const app = createApp();
   app.listen(config.port, () => {
     console.log(`[gateway] listening on :${config.port} (${config.env})`);
-    console.log(`[gateway] cardano ${config.cardano.network} via ${config.cardano.koiosUrl}`);
+    const chainReads = config.cardano.blockfrostProjectId
+      ? `blockfrost + koios`
+      : `koios (${config.cardano.koiosUrl})`;
+    console.log(`[gateway] cardano ${config.cardano.network} via ${chainReads}`);
     console.log(`[gateway] database ${config.mongoDb}`);
   });
 

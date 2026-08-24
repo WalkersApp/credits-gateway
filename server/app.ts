@@ -47,6 +47,9 @@ export function createApp() {
     res.json({
       network: `cardano-${config.cardano.network}`,
       explorerBase: config.cardano.explorerBase,
+      chainProvider: config.cardano.blockfrostProjectId
+        ? "Blockfrost preprod for building and submitting, Koios preprod for reads and as a confirmation fallback"
+        : "Koios preprod for reads, building and submitting",
       sepoliaExplorerBase: config.sepolia.explorerBase,
       vaultAddress: config.cardano.vaultAddress,
       routes: FUNDING_ROUTES,

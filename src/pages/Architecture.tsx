@@ -67,6 +67,12 @@ export function Architecture({ config }: { config: GatewayConfig }) {
             {reserve?.vaultAddress ?? config.vaultAddress} on Cardano {network}. A custodial hot wallet: the signing
             key is held server-side, outside the repository, readable only by the gateway process.
           </dd>
+          <dt>Chain access</dt>
+          <dd>
+            {config.chainProvider}. Transactions are built, balanced and signed in the gateway process; the
+            provider is only used to read UTxOs and to broadcast. Confirmations are read from two independent
+            indexers so one outage cannot strand a settled withdrawal in an unknown state.
+          </dd>
           <dt>Who controls it</dt>
           <dd>The gateway operator. This is a custodial preprod reserve — there is no smart-contract vault or
             multi-signature scheme in this reference implementation, and we do not describe it as non-custodial.</dd>

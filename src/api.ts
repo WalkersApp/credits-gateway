@@ -6,6 +6,7 @@ export interface GatewayConfig {
   network: string;
   explorerBase: string;
   sepoliaExplorerBase: string;
+  chainProvider: string;
   vaultAddress: string;
   routes: FundingRoute[];
   settlementAssets: Array<SettlementAsset & { rateBps: number }>;

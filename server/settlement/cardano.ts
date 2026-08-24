@@ -11,10 +11,11 @@
 
 import { readFileSync, statSync } from "node:fs";
 
-import { Koios, Lucid, getAddressDetails, type LucidEvolution } from "@lucid-evolution/lucid";
+import { Blockfrost, Koios, Lucid, getAddressDetails, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import { config } from "../config.js";
 import { getSettlementAsset } from "./assets.js";
+import { blockfrostConfigured, txConfirmations as blockfrostConfirmations } from "./blockfrost.js";
 import { addressInfo, txStatus } from "./koios.js";
 
 export class SettlementRejectedError extends Error {}
@@ -44,7 +45,11 @@ function readSigningKey(): string {
 async function getLucid(): Promise<LucidEvolution> {
   if (!lucidPromise) {
     lucidPromise = (async () => {
-      const lucid = await Lucid(new Koios(config.cardano.koiosUrl, config.cardano.koiosToken || undefined), NETWORK);
+      const provider = blockfrostConfigured()
+        ? new Blockfrost(config.cardano.blockfrostUrl, config.cardano.blockfrostProjectId)
+        : new Koios(config.cardano.koiosUrl, config.cardano.koiosToken || undefined);
+      console.log(`[settlement] chain provider: ${blockfrostConfigured() ? "blockfrost" : "koios"}`);
+      const lucid = await Lucid(provider, NETWORK);
       lucid.selectWallet.fromPrivateKey(readSigningKey());
       return lucid;
     })().catch((err) => {
@@ -215,8 +220,8 @@ async function submitSigned(cbor: string, txHash: string): Promise<SubmitResult>
 
   for (let attempt = 0; attempt < 10; attempt++) {
     await new Promise((r) => setTimeout(r, 6_000));
-    const status = await txStatus(txHash).catch(() => null);
-    if (status && status.num_confirmations !== null) {
+    const confirmations = await confirmationsOf(txHash).catch(() => 0);
+    if (confirmations > 0) {
       console.warn(`[settlement] ${txHash} confirmed after an ambiguous submit`);
       return { txHash, ambiguous: false };
     }
@@ -256,9 +261,29 @@ export interface TransactionStatus {
 }
 
 export async function getTransactionStatus(txHash: string): Promise<TransactionStatus> {
-  const status = await txStatus(txHash);
-  const confirmations = status?.num_confirmations ?? 0;
+  const confirmations = await confirmationsOf(txHash);
   return { txHash, onChain: confirmations > 0, confirmations };
+}
+
+/**
+ * Confirmations from Koios, falling back to Blockfrost. Either source alone is
+ * enough; asking both means an indexer outage cannot strand a settled
+ * withdrawal in "unknown".
+ */
+async function confirmationsOf(txHash: string): Promise<number> {
+  try {
+    const status = await txStatus(txHash);
+    if (status?.num_confirmations != null) return status.num_confirmations;
+  } catch (err) {
+    console.warn(`[settlement] koios tx_status failed for ${txHash}: ${message(err)}`);
+  }
+  if (!blockfrostConfigured()) return 0;
+  try {
+    return (await blockfrostConfirmations(txHash)) ?? 0;
+  } catch (err) {
+    console.warn(`[settlement] blockfrost tx lookup failed for ${txHash}: ${message(err)}`);
+    return 0;
+  }
 }
 
 function message(err: unknown): string {

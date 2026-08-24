@@ -157,6 +157,28 @@ See `.env.example`. Every variable is listed there with a comment; only `SESSION
 6. Click the hash to open it in the Cardano preprod explorer.
 7. `/evidence` lists the same records, including the failures and the duplicate-prevention counters.
 
+## Live deployment
+
+| | |
+|---|---|
+| URL | <https://wfit-gateway.anchorflow.cloud> |
+| Network | Cardano **preprod** |
+| Settlement vault | `addr_test1vz3scr56jxyl7qez7c8m8z75r73vuhhs0kjl8tjp06yqvjga9h60a` |
+| Deposit address | `addr_test1vrldq43s4xqjnak2s04dg08v2w04cj62llxnqne683rsrpqjzdk6l` |
+| Chain access | Blockfrost preprod (build + submit), Koios preprod (reads, fallback) |
+
+### Transactions from the first end-to-end run
+
+| Step | Transaction |
+|---|---|
+| Vault funded from the testnet faucet | `2959dd4a47d4e31dfa3e09d08e96e947ee94937fce52816e9691f44692d2d743` |
+| Deposit paid in by a test wallet | `8f2c33b8b720def1036b5c5e57ef2b8613b7ef984549e39ed0d1970b43bc7838` |
+| **Withdrawal settled by the gateway** | `3918b29a73d00d34c09eb981d970173eb537f16babedeeb0931b025a88a31623` |
+
+120 tADA arrived, 120 credits were issued, 50 credits were redeemed at a 1% fee, and 49.5 tADA was paid
+out on chain. Either explorer resolves them:
+[cardanoscan](https://preprod.cardanoscan.io/) · [cexplorer](https://preprod.cexplorer.io/).
+
 ## TRL evidence
 
 `/evidence` is generated from this deployment's own records: credited deposits with their source-chain

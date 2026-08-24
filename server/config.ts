@@ -39,6 +39,7 @@ export const config = {
     koiosUrl: str("KOIOS_URL", `https://${network}.koios.rest/api/v1`),
     koiosToken: str("KOIOS_TOKEN"),
     blockfrostProjectId: str("BLOCKFROST_PROJECT_ID"),
+    blockfrostUrl: str("BLOCKFROST_URL", `https://cardano-${network}.blockfrost.io/api/v0`),
     signingKeyPath: str("SETTLEMENT_KEY_PATH", "/root/.wfit-gateway/settlement.preprod.key"),
     vaultAddress: str("SETTLEMENT_VAULT_ADDRESS"),
     explorerBase: str("EXPLORER_BASE", `https://${network}.cardanoscan.io`),
