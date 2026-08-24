@@ -1,6 +1,12 @@
 import type {
-  Deposit, FundingRoute, LedgerEntry, Rebalance, ReserveStatus, SettlementAsset, Withdrawal,
+  Deposit, FundingRoute, LedgerEntry, Rebalance, ReserveStatus, SettlementAsset, SettlementTarget, Withdrawal,
 } from "./shared/types.js";
+
+export interface Outcome {
+  situation: string;
+  result: string;
+  credits: string;
+}
 
 export interface GatewayConfig {
   network: string;
@@ -10,6 +16,18 @@ export interface GatewayConfig {
   vaultAddress: string;
   routes: FundingRoute[];
   settlementAssets: Array<SettlementAsset & { rateBps: number }>;
+  settlementTargets: SettlementTarget[];
+  conversion: {
+    executedByGateway: boolean;
+    productionProvider: string;
+    trigger: string;
+    operatorAction: string;
+    recorded: string[];
+    statuses: string[];
+    completionRule: string;
+  };
+  depositOutcomes: Outcome[];
+  withdrawalOutcomes: Outcome[];
   exchanges: string[];
   fees: {
     withdrawalFlatUnits: number;
@@ -91,7 +109,19 @@ export const api = {
 };
 
 export interface EvidenceResponse {
-  creditedDeposits: Array<Deposit & { account: string }>;
+  environment: {
+    network: string;
+    gatewayUrl: string;
+    vaultAddress: string;
+    vaultExplorerUrl: string | null;
+    cardanoDepositAddress: string | null;
+    sepoliaDepositAddress: string | null;
+    chainAccess: string;
+    checkedAt: number;
+  };
+  depositOutcomes: Outcome[];
+  withdrawalOutcomes: Outcome[];
+  creditedDeposits: Array<Deposit & { account: string; explorerUrl: string | null }>;
   settledWithdrawals: Array<Withdrawal & { account: string; explorerUrl: string | null }>;
   rejectedDeposits: Array<Deposit & { account: string }>;
   refundedWithdrawals: Array<Withdrawal & { account: string }>;

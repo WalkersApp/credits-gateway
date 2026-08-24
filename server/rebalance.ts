@@ -38,6 +38,7 @@ export async function recordRebalance(input: RecordRebalanceInput): Promise<Reba
     note: input.note?.trim() || "",
     createdAt: now,
     updatedAt: now,
+    completedAt: null,
   };
   await rebalances().insertOne({ _id: doc.id, ...doc });
   return doc;
@@ -51,6 +52,7 @@ export async function updateRebalance(
   if (patch.status) {
     if (!["planned", "processing", "completed", "failed"].includes(patch.status)) throw badRequest("Unknown status.", "bad_status");
     set.status = patch.status;
+    if (patch.status === "completed") set.completedAt = Date.now();
   }
   if (patch.actualAmount !== undefined) set.actualAmount = patch.actualAmount.trim() || null;
   if (patch.reference !== undefined) set.reference = patch.reference.trim() || null;

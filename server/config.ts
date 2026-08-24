@@ -78,7 +78,8 @@ export const config = {
   },
 
   reserve: {
-    // Thresholds are per settlement asset, in that asset's base units.
+    // Defaults for every settlement asset, in that asset's base units. Override
+    // one asset with RESERVE_<ASSET_ID>_MIN_UNITS etc — see settlement/assets.ts.
     minUnits: int("RESERVE_MIN_UNITS", 10_000_000),     // 10 ADA / 10 USDCx
     targetUnits: int("RESERVE_TARGET_UNITS", 100_000_000),
     criticalUnits: int("RESERVE_CRITICAL_UNITS", 3_000_000),

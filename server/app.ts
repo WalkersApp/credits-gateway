@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import express, { type NextFunction, type Request, type Response } from "express";
 
 import { config } from "./config.js";
+import { CONVERSION } from "./conversion.js";
+import { DEPOSIT_OUTCOMES, WITHDRAWAL_OUTCOMES } from "./failureModes.js";
 import {
   COOKIE_NAME, authenticate, authenticateAdmin, issueToken, loadSession, registerUser,
   requireAdmin, requireUser, setSessionCookie,
@@ -20,7 +22,7 @@ import { newId } from "./ids.js";
 import { listRebalances, recordRebalance, updateRebalance } from "./rebalance.js";
 import { rateLimit } from "./rateLimit.js";
 import { getReserveStatus, snapshotReserve } from "./reserve.js";
-import { SETTLEMENT_ASSETS, SETTLEMENT_RATE_BPS, explorerTxUrl } from "./settlement/assets.js";
+import { SETTLEMENT_ASSETS, SETTLEMENT_RATE_BPS, SETTLEMENT_TARGETS, explorerAddressUrl, explorerTxUrl } from "./settlement/assets.js";
 import {
   confirmSettlement, createWithdrawal, listWithdrawals, quoteWithdrawal, releaseManualReview,
   settleWithdrawal,
@@ -54,6 +56,10 @@ export function createApp() {
       vaultAddress: config.cardano.vaultAddress,
       routes: FUNDING_ROUTES,
       settlementAssets: SETTLEMENT_ASSETS.map((a) => ({ ...a, rateBps: SETTLEMENT_RATE_BPS[a.id] ?? 10_000 })),
+      settlementTargets: SETTLEMENT_TARGETS,
+      conversion: CONVERSION,
+      depositOutcomes: DEPOSIT_OUTCOMES,
+      withdrawalOutcomes: WITHDRAWAL_OUTCOMES,
       exchanges: config.cexDeposits.exchanges,
       fees: {
         withdrawalFlatUnits: config.fees.withdrawalFlatUnits,
@@ -182,7 +188,20 @@ export function createApp() {
       getReserveStatus().catch(() => null),
     ]);
     res.json({
-      creditedDeposits: credited.map(redactDeposit),
+      environment: {
+        network: `cardano-${config.cardano.network}`,
+        gatewayUrl: config.publicUrl,
+        vaultAddress: config.cardano.vaultAddress,
+        vaultExplorerUrl: config.cardano.vaultAddress ? explorerAddressUrl(config.cardano.vaultAddress) : null,
+        cardanoDepositAddress: config.cardanoDeposits.address || null,
+        sepoliaDepositAddress: config.sepolia.depositAddress || null,
+        chainAccess: config.cardano.blockfrostProjectId ? "Blockfrost preprod (submit), Koios preprod (reads)" : "Koios preprod",
+        checkedAt: Date.now(),
+      },
+      creditedDeposits: credited.map((d) => ({
+        ...redactDeposit(d),
+        explorerUrl: d.txHash ? (d.network === "ethereum-sepolia" ? `${config.sepolia.explorerBase}/tx/${d.txHash}` : explorerTxUrl(d.txHash)) : null,
+      })),
       settledWithdrawals: settled.map((w) => ({ ...redactWithdrawal(w), explorerUrl: w.txHash ? explorerTxUrl(w.txHash) : null })),
       rejectedDeposits: rejected.map(redactDeposit),
       refundedWithdrawals: refunded.map(redactWithdrawal),
@@ -190,6 +209,8 @@ export function createApp() {
       duplicateSubmissions: duplicates.map(redactDeposit),
       integrity,
       reserve,
+      depositOutcomes: DEPOSIT_OUTCOMES,
+      withdrawalOutcomes: WITHDRAWAL_OUTCOMES,
     });
   }));
 

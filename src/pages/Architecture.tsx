@@ -8,6 +8,7 @@ export function Architecture({ config }: { config: GatewayConfig }) {
   useEffect(() => { api.reserve().then(setReserve).catch(() => undefined); }, []);
 
   const network = config.network.replace("cardano-", "");
+  const credits = (units: number) => `${fmt(units)} credits`;
 
   return (
     <>
@@ -16,147 +17,313 @@ export function Architecture({ config }: { config: GatewayConfig }) {
         How external stablecoin value becomes WFIT credits, and how credits are settled back out on Cardano {network}.
       </p>
 
+      <h2>What this is, and what it is not</h2>
       <div className="card">
         <div className="diagram">
-          <div className="node">External stablecoin or exchange withdrawal</div>
+          <div className="node">External stablecoin / exchange withdrawal</div>
           <div className="down">↓</div>
-          <div className="node">Deposit validation — the gateway reads the source chain</div>
+          <div className="node">Validated deposit — the gateway reads the source chain</div>
           <div className="down">↓</div>
-          <div className="node accent">WFIT credits (internal ledger, 1 credit = 1 USD before fees)</div>
+          <div className="node accent">WFIT credits (off-chain accounting layer)</div>
           <div className="down">↓</div>
-          <div className="node">Cardano {network} settlement reserve (custodial hot wallet)</div>
+          <div className="node">Cardano settlement reserve (WFIT-operated custodial vault)</div>
           <div className="down">↓</div>
-          <div className="node">Settlement asset: {config.settlementAssets.filter((a) => a.enabled).map((a) => a.label).join(" / ")}</div>
+          <div className="node">Settlement asset — <strong>USDM / USDCx in production</strong>, tADA in this preprod deployment</div>
           <div className="down">↓</div>
           <div className="node">User-controlled Cardano address</div>
         </div>
+        <ul className="plain">
+          <li>WFIT is <strong>not</strong> building a new blockchain bridge. Value moves between chains through
+            existing, external routes; this gateway validates and accounts for it.</li>
+          <li>WFIT credits are an <strong>off-chain accounting layer</strong>. Not a token, not a stablecoin,
+            not transferable between users.</li>
+          <li>Credits are issued <strong>only after a deposit has been validated on its source chain</strong>,
+            from the amount that actually arrived — never from the amount a user typed.</li>
+          <li>Source-chain deposit custody and Cardano settlement liquidity are <strong>separate
+            responsibilities</strong> with separate addresses and separate accounting.</li>
+          <li>Production settlement targets are <strong>USDM and USDCx on Cardano</strong>.</li>
+          <li>This preprod deployment validates the <strong>settlement engine and the accounting and failure
+            controls around it</strong>. It is not a finished mainnet gateway, and we do not present it as one.</li>
+        </ul>
       </div>
 
-      <h2>Funding routes</h2>
+      <h2>Funding routes and who does what</h2>
+      <p className="sub">
+        "Provider" on its own hides too much, so each role is listed separately. The asset issuer is not the
+        chain-data provider, and neither of them holds the funds.
+      </p>
       <div className="card scroll">
         <table>
           <thead>
-            <tr><th>Network</th><th>Asset</th><th>Provider</th><th>Verification</th><th>Confirmations</th><th>State</th></tr>
+            <tr>
+              <th>Route</th><th>Asset issuer</th><th>Chain access</th><th>Validation</th>
+              <th>Custody</th><th>Automation</th><th>State</th>
+            </tr>
           </thead>
           <tbody>
             {config.routes.map((r) => (
               <tr key={r.id}>
-                <td>{r.networkLabel}</td>
-                <td>{r.asset}</td>
-                <td>{r.provider}</td>
-                <td>{r.verification === "onchain_automatic" ? "automatic, on chain" : "manual, admin approval"}</td>
-                <td>{r.confirmationsRequired || "—"}</td>
-                <td><span className={`pill ${r.enabled ? "good" : "wait"}`}>{r.enabled ? "live" : "not enabled"}</span></td>
+                <td>{r.networkLabel}<br /><span className="sub">{r.asset}</span></td>
+                <td className="sub">{r.assetIssuer}</td>
+                <td className="sub">{r.chainAccess}</td>
+                <td className="sub">{r.validation}{r.confirmationsRequired ? ` · ${r.confirmationsRequired} confirmations` : ""}</td>
+                <td className="sub">{r.custody}</td>
+                <td>
+                  <span className={`pill ${r.automation === "automatic" ? "good" : r.automation === "manual" ? "warn" : "wait"}`}>
+                    {r.automation}
+                  </span>
+                </td>
+                <td><span className={`pill ${r.enabled ? "good" : "wait"}`}>{r.enabled ? "enabled" : "off"}</span></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="sub">
+        <strong>Automation</strong> means what has actually run here. <em>automatic</em> — validated on chain and
+        exercised end to end on this deployment. <em>manual</em> — an admin approves it; no exchange API is
+        integrated. <em>not exercised</em> — the validation code exists and is enabled, but no deposit has been
+        credited through it on this deployment.
+      </p>
+
+      <h2>Cardano settlement</h2>
+      <div className="card">
+        <dl className="kv">
+          <dt>Submission</dt>
+          <dd>Blockfrost preprod. Transactions are built, balanced and signed inside the gateway process; the
+            provider only reads UTxOs and broadcasts.</dd>
+          <dt>Confirmation / read</dt>
+          <dd>Koios preprod first, Blockfrost as a fallback. Two independent indexers, so one outage cannot
+            strand a settled withdrawal in an unknown state.</dd>
+          <dt>Custody</dt>
+          <dd className="break">
+            WFIT-operated Cardano settlement vault: {reserve?.vaultAddress ?? config.vaultAddress}
+          </dd>
+          <dt>Signing</dt>
+          <dd>The key is held server-side, outside the repository, mode 600, read once by the gateway process.
+            It is never logged, never returned by an API and never reaches the browser.</dd>
+        </dl>
+      </div>
+
+      <h2>Settlement assets</h2>
+      <div className="card scroll">
+        <table>
+          <thead><tr><th>Asset</th><th>Rate</th><th>Status</th><th>Basis</th></tr></thead>
+          <tbody>
+            {config.settlementAssets.map((a) => (
+              <tr key={a.id}>
+                <td>{a.label}{a.enabled ? "" : <><br /><span className="sub">disabled</span></>}</td>
+                <td>{a.rateBps / 10_000} per credit</td>
+                <td><span className={`pill ${a.official ? "good" : "warn"}`}>{a.official ? "network asset" : "test asset — not issuer-confirmed"}</span></td>
+                <td className="sub">{a.officialityNote}</td>
+              </tr>
+            ))}
+            {config.settlementTargets.map((s) => (
+              <tr key={s.label}>
+                <td>{s.label}<br /><span className="sub">{s.network}</span></td>
+                <td className="sub">—</td>
+                <td><span className="pill wait">{s.status}</span></td>
+                <td className="sub">{s.note}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card">
+        <p className="sub" style={{ marginTop: 0 }}>
+          <strong>What the preprod tADA settlement proves:</strong> coin selection, transaction construction,
+          signing, submission, confirmation, the withdrawal state transition and the credits reconciliation that
+          follows it — the settlement engine itself, exercised against a real chain.
+        </p>
+        <p className="sub">
+          <strong>What it does not prove:</strong> that USDM or USDCx payouts have been validated. No USDM or
+          USDCx payout has been made by this deployment. tADA is the preprod network asset; it demonstrates the
+          settlement mechanism, not stablecoin peg behaviour.
+        </p>
+      </div>
 
       <h2>Custody</h2>
       <div className="card">
         <dl className="kv">
-          <dt>Incoming deposits</dt>
+          <dt>Source-chain deposits</dt>
           <dd>
-            Held at the gateway's own deposit addresses — one per source chain. These are custodial addresses
-            controlled by the gateway operator, kept separate from the settlement reserve so incoming value and
-            outgoing liquidity are accounted for independently.
+            Held at WFIT-controlled deposit addresses, one per source chain. Custodial. The exchange route has no
+            gateway-controlled address at all — funds land in a WFIT treasury account at the exchange and an admin
+            books them in.
           </dd>
-          <dt>Settlement reserve</dt>
+          <dt>Credits</dt>
+          <dd>
+            Database accounting only. Not a token, not a stablecoin, not a bridge asset, not transferable between
+            users. Credits leave the system only through a settlement transaction.
+          </dd>
+          <dt>Cardano settlement reserve</dt>
           <dd className="break">
-            {reserve?.vaultAddress ?? config.vaultAddress} on Cardano {network}. A custodial hot wallet: the signing
-            key is held server-side, outside the repository, readable only by the gateway process.
+            A dedicated WFIT-operated Cardano vault — {reserve?.vaultAddress ?? config.vaultAddress}, public and
+            checkable. A custodial hot wallet: there is no smart-contract vault and no multi-signature scheme in
+            this implementation, and we do not describe it as non-custodial. The production vault and its key
+            policy are to be declared separately before mainnet.
           </dd>
-          <dt>Chain access</dt>
-          <dd>
-            {config.chainProvider}. Transactions are built, balanced and signed in the gateway process; the
-            provider is only used to read UTxOs and to broadcast. Confirmations are read from two independent
-            indexers so one outage cannot strand a settled withdrawal in an unknown state.
-          </dd>
-          <dt>Who controls it</dt>
-          <dd>The gateway operator. This is a custodial preprod reserve — there is no smart-contract vault or
-            multi-signature scheme in this reference implementation, and we do not describe it as non-custodial.</dd>
-          <dt>What a credit is</dt>
-          <dd>An internal accounting entry representing validated deposit value. It is not a token, it is not
-            transferable between users, and it only leaves the system through a settlement transaction.</dd>
         </dl>
       </div>
 
-      <h2>Conversion</h2>
+      <h2>Reserve thresholds</h2>
+      <div className="card scroll">
+        <table>
+          <thead><tr><th>Settlement asset</th><th>Critical</th><th>Minimum</th><th>Target</th><th>Free now</th><th>State</th></tr></thead>
+          <tbody>
+            {(reserve?.assets ?? []).map((a) => (
+              <tr key={a.assetId}>
+                <td>{a.label}</td>
+                <td className="sub">{fmt(a.criticalUnits)}</td>
+                <td className="sub">{fmt(a.minUnits)}</td>
+                <td className="sub">{fmt(a.targetUnits)}</td>
+                <td>{fmt(a.balanceUnits - a.lockedUnits)}</td>
+                <td><span className={`pill ${a.health === "healthy" ? "good" : a.health === "low" ? "warn" : "bad"}`}>{a.health}</span></td>
+              </tr>
+            ))}
+            {!reserve ? <tr><td colSpan={6} className="sub">Reserve unavailable.</td></tr> : null}
+          </tbody>
+        </table>
+      </div>
       <div className="card">
-        <p className="sub" style={{ marginTop: 0 }}>
-          External value becomes credits when a deposit is validated: the gateway reads the amount that actually
-          arrived, applies the route's server-side rate and deposit fee, and issues that many credits once against
-          that transaction. Credits become a settlement asset at a server-side rate when a withdrawal is confirmed.
-          The client never supplies a rate — a rate sent by a browser is ignored.
-        </p>
-        <div className="scroll">
-          <table>
-            <thead><tr><th>Settlement asset</th><th>Rate</th><th>Status</th><th>Basis</th></tr></thead>
-            <tbody>
-              {config.settlementAssets.map((a) => (
-                <tr key={a.id}>
-                  <td>{a.label}</td>
-                  <td>{a.rateBps / 10_000} per credit</td>
-                  <td><span className={`pill ${a.official ? "good" : "warn"}`}>{a.official ? "official asset" : "test asset"}</span></td>
-                  <td className="sub">{a.officialityNote}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <table>
+          <thead><tr><th>Condition</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td>free ≥ target</td><td>healthy</td></tr>
+            <tr><td>minimum ≤ free &lt; target</td><td>healthy-low — monitor</td></tr>
+            <tr><td>critical ≤ free &lt; minimum</td><td>low — rebalance required</td></tr>
+            <tr><td>free &lt; critical</td><td>critical — rebalance urgently</td></tr>
+            <tr><td>free &lt; the requested settlement</td><td>that settlement is blocked before any credits are locked</td></tr>
+          </tbody>
+        </table>
         <p className="sub">
-          There is no official USDM deployment on Cardano {network}: Moneta publishes a mainnet policy id only.
-          USDCx exists on mainnet under a published Circle/IOG policy; the preprod asset named USDCx is registered
-          in the Cardano Foundation preprod token metadata registry but no official source ties that policy id to
-          Circle, so this gateway treats it as a test asset representing the settlement path.
+          Thresholds are configured per settlement asset, in that asset's base units. "Free" is the on-chain
+          balance minus everything already committed to withdrawals that have not yet settled.
         </p>
       </div>
 
       <h2>Liquidity and rebalancing</h2>
       <div className="card">
+        <p className="sub" style={{ marginTop: 0 }}>
+          <strong>This gateway does not execute conversions.</strong> It does not run a bridge, a DEX
+          integration or a market maker, and it does not claim to. Conversion happens outside the system; the
+          gateway defines the interface, records what happened, and verifies the result against the chain.
+        </p>
         <dl className="kv">
-          <dt>Reserve thresholds</dt>
-          <dd>
-            {reserve?.assets[0]
-              ? `Target ${fmt(reserve.assets[0].targetUnits)} · minimum ${fmt(reserve.assets[0].minUnits)} (per settlement asset).`
-              : "Configured per settlement asset."}{" "}
-            Below the minimum the reserve reads <strong>low</strong>; well below it reads <strong>critical</strong>.
-          </dd>
-          <dt>When liquidity is short</dt>
-          <dd>
-            A withdrawal that the reserve cannot cover is refused before any credits are locked, or — if the reserve
-            drops between the check and the build — parked as pending with the credits locked safely. No transaction
-            is attempted that cannot succeed, and no credits are destroyed.
-          </dd>
-          <dt>Rebalancing</dt>
-          <dd>
-            Incoming external stablecoin liquidity is converted into Cardano settlement liquidity as a recorded
-            operational process: an admin books the source network, asset and amount, the provider used, the expected
-            and actual amounts, and the reference. There is no automated conversion in this implementation and we do
-            not claim one.
-          </dd>
+          <dt>Trigger</dt>
+          <dd>{config.conversion.trigger}</dd>
+          <dt>Operator action</dt>
+          <dd>{config.conversion.operatorAction}</dd>
+          <dt>Production conversion provider</dt>
+          <dd><span className="pill wait">{config.conversion.productionProvider}</span></dd>
+          <dt>Recorded for every rebalance</dt>
+          <dd className="sub">{config.conversion.recorded.join(" · ")}</dd>
+          <dt>Status</dt>
+          <dd className="sub">{config.conversion.statuses.join(" → ")}</dd>
+          <dt>Completion rule</dt>
+          <dd>{config.conversion.completionRule}</dd>
         </dl>
       </div>
 
-      <h2>Failures and refunds</h2>
+      <h2>Fees</h2>
       <div className="card scroll">
         <table>
-          <thead><tr><th>Situation</th><th>What the gateway does</th></tr></thead>
+          <thead><tr><th>Fee</th><th>Charged by</th><th>Current preprod setting</th></tr></thead>
           <tbody>
-            <tr><td>Unsupported or unrecognised deposit</td><td>Rejected. No credits.</td></tr>
-            <tr><td>Deposit not yet confirmed</td><td>Stays pending / confirming. No credits until the confirmation target is met.</td></tr>
-            <tr><td>Same transaction submitted twice</td><td>A unique index on (network, transaction hash) returns the original deposit. Credits are issued once.</td></tr>
-            <tr><td>Amount below the route minimum</td><td>Rejected with the reason. No credits.</td></tr>
-            <tr><td>Exchange deposit rejected by an admin</td><td>Rejected. No credits.</td></tr>
-            <tr><td>Withdrawal fails before broadcast</td><td>Locked credits are released back to available.</td></tr>
-            <tr><td>Reserve cannot cover the settlement</td><td>No transaction is attempted. Credits stay available or locked, never lost.</td></tr>
-            <tr><td>Node rejects the transaction on first submit</td><td>Provably never broadcast — credits are released.</td></tr>
-            <tr><td>Broadcast outcome unknown</td><td>Marked manual review with the transaction hash. Credits stay locked and are never refunded automatically.</td></tr>
-            <tr><td>Settlement confirmed</td><td>Locked credits are consumed and the transaction hash is stored against the withdrawal.</td></tr>
-            <tr><td>Repeated API calls</td><td>Every value-moving operation carries a unique idempotency key, so retries cannot double-credit, double-pay or double-refund.</td></tr>
+            <tr>
+              <td>Source-chain / provider / exchange network fee</td>
+              <td>the source chain or the exchange</td>
+              <td className="sub">outside the gateway — the gateway credits only what actually arrived, after those fees</td>
+            </tr>
+            <tr>
+              <td>Deposit fee</td>
+              <td>WFIT gateway</td>
+              <td>{config.fees.depositFlatUnits === 0 && config.fees.depositBps === 0
+                ? "none"
+                : `${credits(config.fees.depositFlatUnits)} + ${config.fees.depositBps / 100}%`}</td>
+            </tr>
+            <tr>
+              <td>Credits conversion basis</td>
+              <td>—</td>
+              <td className="sub">1 credit = 1 USD of validated deposit value, before fees. Preprod tADA is credited
+                1:1 for readability; that is a test rate, not a price.</td>
+            </tr>
+            <tr>
+              <td>Withdrawal fee</td>
+              <td>WFIT gateway</td>
+              <td>{credits(config.fees.withdrawalFlatUnits)} + {config.fees.withdrawalBps / 100}%</td>
+            </tr>
+            <tr>
+              <td>Cardano network fee</td>
+              <td>the Cardano network</td>
+              <td className="sub">paid by the settlement vault, not deducted from the user's amount. The user
+                receives exactly the quoted settlement amount.</td>
+            </tr>
           </tbody>
         </table>
+        <p className="sub">
+          Fees are <strong>preprod demonstration configuration</strong>, not a committed production price. Every
+          rate and fee is computed server-side; a rate sent by a browser is ignored. Before confirming, the user
+          is shown the credits used, the rate, the gateway fee and the amount they will receive.
+        </p>
+      </div>
+
+      <h2>Deposit outcomes</h2>
+      <div className="card scroll">
+        <table>
+          <thead><tr><th>Situation</th><th>Result</th><th>Credits</th></tr></thead>
+          <tbody>
+            {config.depositOutcomes.map((o) => (
+              <tr key={o.situation}><td>{o.situation}</td><td className="sub">{o.result}</td><td>{o.credits}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Withdrawal outcomes</h2>
+      <div className="card scroll">
+        <table>
+          <thead><tr><th>Situation</th><th>Result</th><th>Credits</th></tr></thead>
+          <tbody>
+            {config.withdrawalOutcomes.map((o) => (
+              <tr key={o.situation}><td>{o.situation}</td><td className="sub">{o.result}</td><td>{o.credits}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card">
+        <p className="sub" style={{ marginTop: 0 }}>
+          <strong>The rule that prevents double payment.</strong> Everything that can fail — building,
+          balancing, coin selection, signing, and a rejection on the <em>first</em> submit — happens before the
+          transaction is broadcast, so those cases release the user's credits safely. Once a submit has been
+          attempted and the outcome cannot be proven, the withdrawal goes to <code>manual_review</code> with the
+          credits still locked. It is never refunded automatically, because the transaction may still confirm.
+          A rejection on a <em>resubmit</em> proves nothing: if our transaction was applied, its inputs are
+          already spent and the node rejects the duplicate.
+        </p>
+      </div>
+
+      <h2>Technology readiness</h2>
+      <div className="card">
+        <p style={{ marginTop: 0 }}>
+          The Stablecoin Gateway integration is positioned at <strong>TRL 5</strong> because its core integrated
+          components have been validated in a relevant environment: real on-chain deposit verification, idempotent
+          credits issuance, accounting integrity controls, reserve checks, withdrawal orchestration, failure
+          handling and real Cardano preprod settlement have been exercised end to end.
+        </p>
+        <p className="sub">
+          The pilot extends this validated integration into production USDM/USDCx settlement liquidity, declared
+          production conversion and interoperability routes, and the broader WFIT ecosystem.
+        </p>
+        <dl className="kv">
+          <dt>Existing WFIT ecosystem</dt>
+          <dd>Production-proven product, running independently of this gateway.</dd>
+          <dt>This stablecoin gateway</dt>
+          <dd>A validated integration in preprod. See <a href="/evidence">the evidence page</a> for the records
+            and transaction hashes behind that claim.</dd>
+          <dt>Pilot</dt>
+          <dd>Mainnet deployment, production integration and adoption.</dd>
+        </dl>
       </div>
     </>
   );

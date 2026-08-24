@@ -29,7 +29,13 @@ export interface FundingRoute {
   networkLabel: string;
   asset: string;            // "USDC", "ADA", "USDCx"
   assetDecimals: number;
-  provider: string;         // who actually verifies / custodies at this hop
+  // Roles are listed separately on purpose: "provider" as one word hides who
+  // issues the asset, who serves the chain data and who holds the funds.
+  assetIssuer: string;
+  chainAccess: string;
+  validation: string;
+  custody: string;
+  automation: "automatic" | "manual" | "not exercised";
   verification: VerificationMethod;
   confirmationsRequired: number;
   depositAddress: string | null;
@@ -49,6 +55,16 @@ export interface SettlementAsset {
   officialityNote: string;
   minSettlementUnits: number;
   enabled: boolean;
+  /** Thresholds in this asset's base units. */
+  reserve: { criticalUnits: number; minUnits: number; targetUnits: number };
+}
+
+/** A settlement asset we intend to use in production but have not deployed. */
+export interface SettlementTarget {
+  label: string;
+  network: string;
+  status: string;
+  note: string;
 }
 
 export interface CreditBalance {
@@ -127,6 +143,7 @@ export interface ReserveStatus {
     label: string;
     balanceUnits: number;
     lockedUnits: number;      // committed to withdrawals not yet on chain
+    criticalUnits: number;
     minUnits: number;
     targetUnits: number;
     health: "healthy" | "low" | "critical";
@@ -149,4 +166,5 @@ export interface Rebalance {
   note: string;
   createdAt: number;
   updatedAt: number;
+  completedAt: number | null;
 }
